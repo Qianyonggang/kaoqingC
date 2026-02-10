@@ -82,6 +82,9 @@ class Employee(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_id = db.Column(db.Integer, db.ForeignKey("company.id"), nullable=False)
     name = db.Column(db.String(80), nullable=False)
+    # 为兼容已有 SQLite 表结构，保留电话/银行卡字段并给默认值
+    phone = db.Column(db.String(30), nullable=False, default="")
+    bank_account = db.Column(db.String(64), nullable=False, default="")
     daily_salary = db.Column(db.Float, nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -378,6 +381,8 @@ def team_detail(team_id):
             employee = Employee(
                 company_id=current_user.company_id,
                 name=name,
+                phone="",
+                bank_account="",
                 daily_salary=daily_salary,
                 created_by=current_user.id,
             )
