@@ -13,24 +13,23 @@
     <div class="card p-3 mb-3">
       <h5>新增员工到当前团队</h5>
       <ul class="nav nav-tabs mb-3" role="tablist">
-        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#newEmp" type="button">新增员工</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#existingEmp" type="button">添加原有员工</button></li>
+        <li class="nav-item"><button class="nav-link {% if not existing_q %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#newEmp" type="button">新增员工</button></li>
+        <li class="nav-item"><button class="nav-link {% if existing_q %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#existingEmp" type="button">添加原有员工</button></li>
       </ul>
       <div class="tab-content">
-        <div class="tab-pane fade show active" id="newEmp">
+        <div class="tab-pane fade {% if not existing_q %}show active{% endif %}" id="newEmp">
           <form method="post">
             <input type="hidden" name="add_mode" value="new">
             <div class="mb-2"><label class="form-label">姓名（公司内唯一）</label><input class="form-control" name="name" required></div>
-            <div class="mb-2"><label class="form-label">联系方式</label><input class="form-control" name="phone" required></div>
-            <div class="mb-2"><label class="form-label">银行卡号</label><input class="form-control" name="bank_account" required></div>
             <div class="mb-2"><label class="form-label">单日工资</label><input class="form-control" name="daily_salary" type="number" step="0.01" required></div>
             <button class="btn btn-primary">新增并加入团队</button>
           </form>
         </div>
-        <div class="tab-pane fade" id="existingEmp">
+        <div class="tab-pane fade {% if existing_q %}show active{% endif %}" id="existingEmp">
           <form method="get" class="mb-2">
             <div class="input-group">
-              <input name="existing_q" class="form-control" placeholder="搜索现有员工（姓名/电话）" value="{{ existing_q }}">
+              <input type="hidden" name="q" value="{{ query_text }}">
+              <input name="existing_q" class="form-control" placeholder="搜索现有员工（姓名）" value="{{ existing_q }}">
               <button class="btn btn-outline-secondary">搜索</button>
             </div>
           </form>
@@ -41,7 +40,7 @@
               <select class="form-select" name="existing_employee_id" required>
                 <option value="">请选择员工</option>
                 {% for e in available_employees %}
-                  <option value="{{ e.id }}">{{ e.name }}（{{ e.phone }}）</option>
+                  <option value="{{ e.id }}">{{ e.name }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -56,7 +55,8 @@
       <h5>团队员工列表</h5>
       <form method="get" class="mb-3">
         <div class="input-group">
-          <input name="q" class="form-control" placeholder="按姓名/电话搜索员工" value="{{ query_text }}">
+          <input type="hidden" name="existing_q" value="{{ existing_q }}">
+          <input name="q" class="form-control" placeholder="按姓名搜索员工" value="{{ query_text }}">
           <button class="btn btn-outline-secondary">搜索</button>
         </div>
       </form>
@@ -65,10 +65,8 @@
         {% for e in members %}
           <div class="border rounded p-2">
             <form method="post" action="{{ url_for('team_employee_update', team_id=team.id, employee_id=e.id) }}" class="row g-2 align-items-center">
-              <div class="col-md-3"><input class="form-control form-control-sm" name="name" value="{{ e.name }}" required></div>
-              <div class="col-md-3"><input class="form-control form-control-sm" name="phone" value="{{ e.phone }}" required></div>
-              <div class="col-md-3"><input class="form-control form-control-sm" name="bank_account" value="{{ e.bank_account }}" required></div>
-              <div class="col-md-3"><input class="form-control form-control-sm" name="daily_salary" type="number" step="0.01" value="{{ e.daily_salary }}" required></div>
+              <div class="col-md-6"><input class="form-control form-control-sm" name="name" value="{{ e.name }}" required></div>
+              <div class="col-md-6"><input class="form-control form-control-sm" name="daily_salary" type="number" step="0.01" value="{{ e.daily_salary }}" required></div>
               <div class="col-12 d-flex gap-2">
                 <button class="btn btn-sm btn-outline-primary">保存</button>
             </form>

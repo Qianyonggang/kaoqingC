@@ -13,8 +13,7 @@ from flask_login import (
     logout_user,
 )
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import CheckConstraint, UniqueConstraint, func, or_
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import CheckConstraint, UniqueConstraint, func
 from werkzeug.security import check_password_hash, generate_password_hash
 
 # =====================
@@ -83,8 +82,6 @@ class Employee(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_id = db.Column(db.Integer, db.ForeignKey("company.id"), nullable=False)
     name = db.Column(db.String(80), nullable=False)
-    phone = db.Column(db.String(30), nullable=False)
-    bank_account = db.Column(db.String(64), nullable=False)
     daily_salary = db.Column(db.Float, nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -367,8 +364,6 @@ def team_detail(team_id):
             return redirect(url_for("team_detail", team_id=team.id))
 
         name = request.form["name"].strip()
-        phone = request.form["phone"].strip()
-        bank_account = request.form["bank_account"].strip()
         daily_salary = float(request.form["daily_salary"])
 
         if Employee.query.filter_by(company_id=current_user.company_id, name=name).first():
@@ -378,8 +373,6 @@ def team_detail(team_id):
         employee = Employee(
             company_id=current_user.company_id,
             name=name,
-            phone=phone,
-            bank_account=bank_account,
             daily_salary=daily_salary,
             created_by=current_user.id,
         )
@@ -392,16 +385,14 @@ def team_detail(team_id):
 
     members = team.members
     if query_text:
-        members = [m for m in members if query_text.lower() in m.name.lower() or query_text in m.phone]
+        members = [m for m in members if query_text.lower() in m.name.lower()]
 
     available_query = Employee.query.filter(
         Employee.company_id == current_user.company_id,
         ~Employee.teams.any(Team.id == team.id),
     )
     if existing_q:
-        available_query = available_query.filter(
-            or_(Employee.name.like(f"%{existing_q}%"), Employee.phone.like(f"%{existing_q}%"))
-        )
+        available_query = available_query.filter(Employee.name.like(f"%{existing_q}%"))
     available_employees = available_query.order_by(Employee.name.asc()).all()
 
     return render_template(
@@ -437,8 +428,6 @@ def team_employee_update(team_id, employee_id):
         return redirect(url_for("team_detail", team_id=team.id))
 
     employee.name = new_name
-    employee.phone = request.form["phone"].strip()
-    employee.bank_account = request.form["bank_account"].strip()
     employee.daily_salary = float(request.form["daily_salary"])
 
     if team not in employee.teams:
@@ -496,7 +485,7 @@ def team_attendance(team_id):
         work_date = datetime.strptime(request.form["work_date"], "%Y-%m-%d").date()
         if work_date > date.today():
             flash("不能记录未来日期的考勤。", "danger")
-            return redirect(url_for("team_attendance", team_id=team.id))
+            return redirect(url_for("team_attendance", team_id=team.id, work_date=work_date.isoformat(), q=query_text))
 
         error_messages = []
         updated_count = 0
@@ -550,11 +539,11 @@ def team_attendance(team_id):
         if not updated_count and not error_messages:
             flash("未选择任何员工的考勤数据。", "warning")
 
-        return redirect(url_for("team_attendance", team_id=team.id))
+        return redirect(url_for("team_attendance", team_id=team.id, work_date=work_date.isoformat(), q=query_text))
 
     members = team.members
     if query_text:
-        members = [m for m in members if query_text.lower() in m.name.lower() or query_text in m.phone]
+        members = [m for m in members if query_text.lower() in m.name.lower()]
 
     selected_date_str = request.args.get("work_date", date.today().isoformat())
     selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
@@ -586,13 +575,7 @@ def employees():
     query_text = request.args.get("q", "").strip()
     items_query = Employee.query.filter_by(company_id=current_user.company_id)
     if query_text:
-        items_query = items_query.filter(
-            or_(
-                Employee.name.like(f"%{query_text}%"),
-                Employee.phone.like(f"%{query_text}%"),
-                Employee.bank_account.like(f"%{query_text}%"),
-            )
-        )
+        items_query = items_query.filter(Employee.name.like(f"%{query_text}%"))
     items = items_query.order_by(Employee.created_at.desc()).all()
     return render_template("employees.html", items=items, query_text=query_text)
 
@@ -744,8 +727,6 @@ def export_excel():
     for emp in employees_data:
         row = {
             "员工姓名": emp.name,
-            "联系方式": emp.phone,
-            "银行卡号": emp.bank_account,
             "单日工资": emp.daily_salary,
         }
         total_days = 0.0

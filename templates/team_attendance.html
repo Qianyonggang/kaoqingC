@@ -14,7 +14,7 @@
     </div>
     <div class="col-md-5">
       <label class="form-label">员工搜索</label>
-      <input class="form-control" name="q" placeholder="按姓名/电话搜索" value="{{ query_text }}">
+      <input class="form-control" name="q" placeholder="按姓名搜索" value="{{ query_text }}">
     </div>
     <div class="col-md-2 d-flex align-items-end"><button class="btn btn-outline-primary w-100">筛选</button></div>
   </form>
@@ -29,11 +29,10 @@
 
     <div class="table-responsive">
       <table class="table table-sm align-middle">
-        <tr><th>员工</th><th>联系方式</th><th>考勤（单选按钮）</th></tr>
+        <tr><th>员工</th><th>考勤（单选按钮）</th></tr>
         {% for e in members %}
           <tr>
             <td>{{ e.name }}</td>
-            <td>{{ e.phone }}</td>
             <td>
               <div class="d-flex gap-3">
                 <label><input type="radio" name="attendance_{{ e.id }}" value="0" {% if attendance_map[e.id] == 0 %}checked{% endif %}> 0天</label>
@@ -43,7 +42,7 @@
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="3" class="text-muted">当前筛选条件下无员工</td></tr>
+          <tr><td colspan="2" class="text-muted">当前筛选条件下无员工</td></tr>
         {% endfor %}
       </table>
     </div>
