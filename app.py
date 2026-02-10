@@ -344,7 +344,7 @@ def team_detail(team_id):
     existing_q = request.args.get("existing_q", "").strip()
 
     if request.method == "POST":
-        add_mode = request.form.get("add_mode", "new")
+        add_mode = request.form.get("add_mode", "new_employee")
 
         if add_mode == "existing":
             employee_id = request.form.get("existing_employee_id")
@@ -363,38 +363,65 @@ def team_detail(team_id):
             flash("已成功将原有员工加入当前团队。", "success")
             return redirect(url_for("team_detail", team_id=team.id))
 
-        # 新增“临时用工”记录：姓名自动生成，工资按“人数 * 单价”计算
-        temp_count = int(request.form["temp_count"])
-        temp_daily_unit_salary = float(request.form["temp_daily_unit_salary"])
-        if temp_count <= 0 or temp_daily_unit_salary < 0:
-            flash("临时用工人数需大于0，单日工资不能为负数。", "danger")
-            return redirect(url_for("team_detail", team_id=team.id))
+        if add_mode == "new_employee":
+            name = request.form["name"].strip()
+            daily_salary = float(request.form["daily_salary"])
+            if Employee.query.filter_by(company_id=current_user.company_id, name=name).first():
+                flash("员工姓名已存在，不允许重复。", "danger")
+                return redirect(url_for("team_detail", team_id=team.id))
 
-        name = f"临时工-{temp_count}-{team.name}"
-        daily_salary = round(temp_count * temp_daily_unit_salary, 2)
-
-        existing_temp = Employee.query.filter_by(company_id=current_user.company_id, name=name).first()
-        if existing_temp:
-            # 若存在同名临时工记录，则直接更新工资并确保在当前团队中
-            existing_temp.daily_salary = daily_salary
-            if team not in existing_temp.teams:
-                existing_temp.teams.append(team)
-            log_action("update_temp_employee_in_team", f"团队 {team.name} 更新临时工：{name}，工资={daily_salary}")
+            employee = Employee(
+                company_id=current_user.company_id,
+                name=name,
+                daily_salary=daily_salary,
+                created_by=current_user.id,
+            )
+            employee.teams.append(team)
+            db.session.add(employee)
+            log_action("create_employee_in_team", f"团队 {team.name} 新增员工：{name}")
             db.session.commit()
-            flash("已更新同名临时用工记录并加入当前团队。", "success")
+            flash("员工新增成功，并已加入当前团队。", "success")
             return redirect(url_for("team_detail", team_id=team.id))
 
-        employee = Employee(
-            company_id=current_user.company_id,
-            name=name,
-            daily_salary=daily_salary,
-            created_by=current_user.id,
-        )
-        employee.teams.append(team)
-        db.session.add(employee)
-        log_action("create_temp_employee_in_team", f"团队 {team.name} 新增临时工：{name}，工资={daily_salary}")
-        db.session.commit()
-        flash("临时用工新增成功，并已加入当前团队。", "success")
+        if add_mode == "temp":
+            try:
+                temp_count = int(request.form["temp_count"])
+                temp_daily_unit_salary = float(request.form["temp_daily_unit_salary"])
+            except (TypeError, ValueError):
+                flash("临时用工参数格式错误，请重新输入。", "danger")
+                return redirect(url_for("team_detail", team_id=team.id))
+
+            if temp_count <= 0 or temp_daily_unit_salary < 0:
+                flash("临时用工人数需大于0，单日工资不能为负数。", "danger")
+                return redirect(url_for("team_detail", team_id=team.id))
+
+            name = f"临时工-{temp_count}-{team.name}"
+            daily_salary = round(temp_count * temp_daily_unit_salary, 2)
+
+            existing_temp = Employee.query.filter_by(company_id=current_user.company_id, name=name).first()
+            if existing_temp:
+                existing_temp.daily_salary = daily_salary
+                if team not in existing_temp.teams:
+                    existing_temp.teams.append(team)
+                log_action("update_temp_employee_in_team", f"团队 {team.name} 更新临时工：{name}，工资={daily_salary}")
+                db.session.commit()
+                flash("已更新同名临时用工记录并加入当前团队。", "success")
+                return redirect(url_for("team_detail", team_id=team.id))
+
+            employee = Employee(
+                company_id=current_user.company_id,
+                name=name,
+                daily_salary=daily_salary,
+                created_by=current_user.id,
+            )
+            employee.teams.append(team)
+            db.session.add(employee)
+            log_action("create_temp_employee_in_team", f"团队 {team.name} 新增临时工：{name}，工资={daily_salary}")
+            db.session.commit()
+            flash("临时用工新增成功，并已加入当前团队。", "success")
+            return redirect(url_for("team_detail", team_id=team.id))
+
+        flash("未知的新增模式。", "danger")
         return redirect(url_for("team_detail", team_id=team.id))
 
     members = team.members
@@ -560,6 +587,10 @@ def team_attendance(team_id):
 
     selected_date_str = request.args.get("work_date", date.today().isoformat())
     selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
+    if selected_date > date.today():
+        selected_date = date.today()
+        selected_date_str = selected_date.isoformat()
+        flash("考勤日期不能超过今天，已自动切换为今天。", "warning")
 
     attendance_map = {}
     for emp in members:
