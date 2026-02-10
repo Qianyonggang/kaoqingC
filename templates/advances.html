@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}借支管理{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card p-3">
+      <h5>新增借支</h5>
+      <form method="post">
+        <div class="mb-2"><label class="form-label">员工</label><select class="form-select" name="employee_id">{% for e in employees %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}</select></div>
+        <div class="mb-2"><label class="form-label">借支金额</label><input class="form-control" type="number" step="0.01" name="amount" required></div>
+        <div class="mb-2"><label class="form-label">借支日期</label><input class="form-control" type="date" max="{{ today }}" name="advance_date" required></div>
+        <div class="mb-2"><label class="form-label">备注</label><input class="form-control" name="note"></div>
+        <button class="btn btn-primary">保存</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card p-3">
+      <h5>借支记录</h5>
+      <table class="table table-sm">
+        <tr><th>日期</th><th>员工</th><th>金额</th><th>备注</th></tr>
+        {% for i in items %}
+          <tr><td>{{ i.advance_date }}</td><td>{{ i.employee.name }}</td><td>{{ i.amount }}</td><td>{{ i.note }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
