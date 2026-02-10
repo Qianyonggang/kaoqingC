@@ -52,7 +52,7 @@
           <form method="post">
             <input type="hidden" name="add_mode" value="temp">
             <div class="mb-2"><label class="form-label">临时用工人数（X）</label><input class="form-control" name="temp_count" type="number" min="1" step="1" required></div>
-            <div class="mb-2"><label class="form-label">临时工单人单日工资</label><input class="form-control" name="temp_daily_unit_salary" type="number" min="0" step="0.01" required></div>
+            <div class="mb-2"><label class="form-label">临时工单人单日工资</label><input class="form-control" name="temp_daily_unit_salary" type="number" min="0" step="10" required></div>
             <div class="form-text mb-2">系统将自动保存为：姓名=临时工-X-{{ team.name }}；单日工资=X*单价。</div>
             <button class="btn btn-primary">新增临时用工</button>
           </form>
