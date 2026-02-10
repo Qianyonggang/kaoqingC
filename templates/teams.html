@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}团队管理{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card p-3">
+      <h5>新增团队</h5>
+      <form method="post">
+        <div class="mb-2"><label class="form-label">团队名称</label><input class="form-control" name="name" required></div>
+        <div class="mb-2">
+          <label class="form-label">负责人</label>
+          <select class="form-select" name="manager_id" required>
+            {% for a in admins %}<option value="{{ a.id }}">{{ a.username }}</option>{% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-primary">创建团队</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card p-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">团队列表</h5>
+      </div>
+      <form method="get" class="mb-3">
+        <div class="input-group">
+          <input name="q" class="form-control" placeholder="搜索团队名称" value="{{ query_text }}">
+          <button class="btn btn-outline-secondary">搜索</button>
+        </div>
+      </form>
+      <table class="table table-sm align-middle">
+        <tr><th>名称</th><th>负责人</th><th>成员数</th><th>操作</th></tr>
+        {% for t in items %}
+          <tr>
+            <td>{{ t.name }}</td>
+            <td>{{ t.manager.username }}</td>
+            <td>{{ t.members|length }}</td>
+            <td class="d-flex gap-2 flex-wrap">
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('team_detail', team_id=t.id) }}">员工维护</a>
+              <a class="btn btn-sm btn-success" href="{{ url_for('team_attendance', team_id=t.id) }}">团队考勤</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
