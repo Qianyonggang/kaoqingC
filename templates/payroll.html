@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}工资统计{% endblock %}
+{% block content %}
+<div class="card p-3 mb-3">
+  <form class="row g-2" method="get">
+    <div class="col-md-2"><input class="form-control" name="year" type="number" value="{{ year }}"></div>
+    <div class="col-md-2"><input class="form-control" name="month" type="number" min="1" max="12" value="{{ month }}"></div>
+    <div class="col-md-2"><button class="btn btn-primary">查询</button></div>
+    {% if current_user.is_owner %}
+      <div class="col-md-3"><a class="btn btn-success" href="{{ url_for('export_excel', year=year, month=month) }}">下载 Excel</a></div>
+    {% endif %}
+  </form>
+</div>
+<div class="card p-3">
+  <h5>{{ year }}年{{ month }}月工资汇总</h5>
+  <table class="table table-sm">
+    <tr><th>姓名</th><th>单日工资</th><th>考勤天数</th><th>借支</th><th>总工资</th><th>剩余工资</th></tr>
+    {% for r in rows %}
+      <tr><td>{{ r.name }}</td><td>{{ r.daily_salary }}</td><td>{{ r.days }}</td><td>{{ r.advances }}</td><td>{{ r.gross }}</td><td>{{ r.remain }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
