@@ -1,0 +1,14 @@
+body {
+  background: #f6f8fb;
+}
+.card {
+  border: 0;
+  border-radius: 14px;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.05);
+}
+.hero {
+  background: linear-gradient(135deg, #1f6feb, #2ea043);
+}
+.table {
+  font-size: 0.92rem;
+}
