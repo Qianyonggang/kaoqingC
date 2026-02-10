@@ -6,8 +6,8 @@
   <p class="mb-0">当前公司共有 {{ teams|length }} 个团队，{{ employees|length }} 名员工。</p>
 </div>
 <div class="row g-3">
-  <div class="col-md-4"><div class="card p-3 h-100"><h5>团队管理</h5><p>创建团队并指定管理员。</p><a class="btn btn-outline-primary" href="{{ url_for('teams') }}">进入</a></div></div>
-  <div class="col-md-4"><div class="card p-3 h-100"><h5>员工管理</h5><p>添加员工并共享到多个团队。</p><a class="btn btn-outline-primary" href="{{ url_for('employees') }}">进入</a></div></div>
-  <div class="col-md-4"><div class="card p-3 h-100"><h5>考勤记录</h5><p>记录当日/历史考勤，禁止未来日期。</p><a class="btn btn-outline-primary" href="{{ url_for('attendance') }}">进入</a></div></div>
+  <div class="col-md-4"><div class="card p-3 h-100"><h5>团队管理</h5><p>创建团队、进入团队详情维护员工。</p><a class="btn btn-outline-primary" href="{{ url_for('teams') }}">进入</a></div></div>
+  <div class="col-md-4"><div class="card p-3 h-100"><h5>团队考勤</h5><p>按团队显示全部员工，一次性录入考勤。</p><a class="btn btn-outline-primary" href="{{ url_for('teams') }}">选择团队</a></div></div>
+  <div class="col-md-4"><div class="card p-3 h-100"><h5>工资统计</h5><p>按月汇总工资并支持导出。</p><a class="btn btn-outline-primary" href="{{ url_for('payroll') }}">进入</a></div></div>
 </div>
 {% endblock %}

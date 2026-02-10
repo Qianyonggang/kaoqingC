@@ -16,9 +16,8 @@
       <div class="collapse navbar-collapse" id="menu">
         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
           <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">首页</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('teams') }}">团队</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('employees') }}">员工</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('attendance') }}">考勤</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('teams') }}">团队管理/团队考勤</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('employees') }}">员工总览</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('advances') }}">借支</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('payroll') }}">工资统计</a></li>
           {% if current_user.is_owner %}

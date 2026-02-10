@@ -3,15 +3,7 @@ from datetime import date, datetime
 from io import BytesIO
 
 import pandas as pd
-from flask import (
-    Flask,
-    flash,
-    redirect,
-    render_template,
-    request,
-    send_file,
-    url_for,
-)
+from flask import Flask, flash, redirect, render_template, request, send_file, url_for
 from flask_login import (
     LoginManager,
     UserMixin,
@@ -21,7 +13,7 @@ from flask_login import (
     logout_user,
 )
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import CheckConstraint, UniqueConstraint, and_, func
+from sqlalchemy import CheckConstraint, UniqueConstraint, func, or_
 from werkzeug.security import check_password_hash, generate_password_hash
 
 # =====================
@@ -36,7 +28,7 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
-# 员工与团队为多对多关系的中间表
+# 员工与团队为多对多关系的中间表（用于实现员工跨团队共享）
 team_members = db.Table(
     "team_members",
     db.Column("team_id", db.Integer, db.ForeignKey("team.id"), primary_key=True),
@@ -313,7 +305,9 @@ def teams():
         flash("仅管理员可操作。", "danger")
         return redirect(url_for("dashboard"))
 
+    query_text = request.args.get("q", "").strip()
     admins_data = User.query.filter_by(company_id=current_user.company_id, is_admin=True).all()
+
     if request.method == "POST":
         name = request.form["name"].strip()
         manager_id = int(request.form["manager_id"])
@@ -324,24 +318,32 @@ def teams():
         flash("团队创建成功。", "success")
         return redirect(url_for("teams"))
 
-    items = Team.query.filter_by(company_id=current_user.company_id).all()
-    return render_template("teams.html", items=items, admins=admins_data)
+    team_query = Team.query.filter_by(company_id=current_user.company_id)
+    if query_text:
+        team_query = team_query.filter(Team.name.like(f"%{query_text}%"))
+    items = team_query.order_by(Team.created_at.desc()).all()
+    return render_template("teams.html", items=items, admins=admins_data, query_text=query_text)
 
 
-@app.route("/employees", methods=["GET", "POST"])
+@app.route("/teams/<int:team_id>", methods=["GET", "POST"])
 @login_required
-def employees():
+def team_detail(team_id):
+    """团队详情页：可在团队内直接新增员工，并维护员工信息。"""
     if not current_user.is_admin:
         flash("仅管理员可操作。", "danger")
         return redirect(url_for("dashboard"))
 
-    company_teams = Team.query.filter_by(company_id=current_user.company_id).all()
+    team = Team.query.get_or_404(team_id)
+    if not ensure_company_scope(team):
+        return redirect(url_for("teams"))
+
+    query_text = request.args.get("q", "").strip()
+
     if request.method == "POST":
         name = request.form["name"].strip()
         phone = request.form["phone"].strip()
         bank_account = request.form["bank_account"].strip()
         daily_salary = float(request.form["daily_salary"])
-        team_ids = request.form.getlist("team_ids")
 
         employee = Employee(
             company_id=current_user.company_id,
@@ -351,118 +353,199 @@ def employees():
             daily_salary=daily_salary,
             created_by=current_user.id,
         )
-
-        for tid in team_ids:
-            team = Team.query.get(int(tid))
-            if team and team.company_id == current_user.company_id:
-                employee.teams.append(team)
-
+        employee.teams.append(team)
         db.session.add(employee)
-        log_action("create_employee", f"新增员工：{name}")
+        log_action("create_employee_in_team", f"团队 {team.name} 新增员工：{name}")
         db.session.commit()
-        flash("员工新增成功。", "success")
-        return redirect(url_for("employees"))
+        flash("员工新增成功，并已加入当前团队。", "success")
+        return redirect(url_for("team_detail", team_id=team.id))
 
-    items = Employee.query.filter_by(company_id=current_user.company_id).all()
-    return render_template("employees.html", items=items, teams=company_teams)
+    members = team.members
+    if query_text:
+        members = [m for m in members if query_text.lower() in m.name.lower() or query_text in m.phone]
+
+    return render_template("team_detail.html", team=team, members=members, query_text=query_text)
 
 
-@app.route("/employee/<int:employee_id>/assign_teams", methods=["POST"])
+@app.route("/teams/<int:team_id>/employees/<int:employee_id>/update", methods=["POST"])
 @login_required
-def assign_teams(employee_id):
-    employee = Employee.query.get_or_404(employee_id)
-    if not ensure_company_scope(employee):
-        return redirect(url_for("employees"))
-
-    employee.teams.clear()
-    team_ids = request.form.getlist("team_ids")
-    for tid in team_ids:
-        team = Team.query.get(int(tid))
-        if team and team.company_id == current_user.company_id:
-            employee.teams.append(team)
-
-    log_action("assign_employee_teams", f"员工 {employee.name} 更新团队归属")
-    db.session.commit()
-    flash("员工团队更新成功。", "success")
-    return redirect(url_for("employees"))
-
-
-@app.route("/attendance", methods=["GET", "POST"])
-@login_required
-def attendance():
+def team_employee_update(team_id, employee_id):
     if not current_user.is_admin:
         flash("仅管理员可操作。", "danger")
         return redirect(url_for("dashboard"))
 
-    teams_data = Team.query.filter_by(company_id=current_user.company_id).all()
-    employees_data = Employee.query.filter_by(company_id=current_user.company_id).all()
+    team = Team.query.get_or_404(team_id)
+    employee = Employee.query.get_or_404(employee_id)
+    if not ensure_company_scope(team) or not ensure_company_scope(employee):
+        return redirect(url_for("teams"))
+
+    employee.name = request.form["name"].strip()
+    employee.phone = request.form["phone"].strip()
+    employee.bank_account = request.form["bank_account"].strip()
+    employee.daily_salary = float(request.form["daily_salary"])
+
+    if team not in employee.teams:
+        employee.teams.append(team)
+
+    log_action("update_employee", f"更新员工：{employee.name}（团队 {team.name}）")
+    db.session.commit()
+    flash("员工信息更新成功。", "success")
+    return redirect(url_for("team_detail", team_id=team.id))
+
+
+@app.route("/teams/<int:team_id>/employees/<int:employee_id>/delete", methods=["POST"])
+@login_required
+def team_employee_delete(team_id, employee_id):
+    """从团队移除员工；若该员工不在任何团队中则删除员工主档。"""
+    if not current_user.is_admin:
+        flash("仅管理员可操作。", "danger")
+        return redirect(url_for("dashboard"))
+
+    team = Team.query.get_or_404(team_id)
+    employee = Employee.query.get_or_404(employee_id)
+    if not ensure_company_scope(team) or not ensure_company_scope(employee):
+        return redirect(url_for("teams"))
+
+    if team in employee.teams:
+        employee.teams.remove(team)
+
+    # 如果员工已不属于任何团队，可按业务需要直接删除
+    if len(employee.teams) == 0:
+        db.session.delete(employee)
+        log_action("delete_employee", f"删除员工：{employee.name}")
+    else:
+        log_action("remove_employee_from_team", f"员工 {employee.name} 从团队 {team.name} 移除")
+
+    db.session.commit()
+    flash("员工维护操作已完成。", "success")
+    return redirect(url_for("team_detail", team_id=team.id))
+
+
+@app.route("/teams/<int:team_id>/attendance", methods=["GET", "POST"])
+@login_required
+def team_attendance(team_id):
+    """团队考勤页：显示该团队全部员工，单选按钮录入考勤。"""
+    if not current_user.is_admin:
+        flash("仅管理员可操作。", "danger")
+        return redirect(url_for("dashboard"))
+
+    team = Team.query.get_or_404(team_id)
+    if not ensure_company_scope(team):
+        return redirect(url_for("teams"))
+
+    query_text = request.args.get("q", "").strip()
 
     if request.method == "POST":
-        employee_id = int(request.form["employee_id"])
-        team_id = int(request.form["team_id"])
         work_date = datetime.strptime(request.form["work_date"], "%Y-%m-%d").date()
-        day_count = float(request.form["day_count"])
-
         if work_date > date.today():
             flash("不能记录未来日期的考勤。", "danger")
-            return redirect(url_for("attendance"))
+            return redirect(url_for("team_attendance", team_id=team.id))
 
-        employee = Employee.query.get_or_404(employee_id)
-        team = Team.query.get_or_404(team_id)
-        if employee.company_id != current_user.company_id or team.company_id != current_user.company_id:
-            flash("数据越权。", "danger")
-            return redirect(url_for("attendance"))
+        error_messages = []
+        updated_count = 0
+        # 遍历团队下所有员工，批量写入当天考勤
+        for emp in team.members:
+            raw_value = request.form.get(f"attendance_{emp.id}")
+            if raw_value is None:
+                continue
 
-        record = Attendance.query.filter_by(employee_id=employee_id, team_id=team_id, work_date=work_date).first()
+            day_count = float(raw_value)
+            record = Attendance.query.filter_by(employee_id=emp.id, team_id=team.id, work_date=work_date).first()
 
-        # 先计算该员工当天其它团队已记录工时，保证总和不超过1天
-        other_sum = (
-            db.session.query(func.coalesce(func.sum(Attendance.day_count), 0.0))
-            .filter(
-                Attendance.employee_id == employee_id,
-                Attendance.work_date == work_date,
-                Attendance.team_id != team_id,
-            )
-            .scalar()
-        )
-
-        if other_sum + day_count > 1.0:
-            flash("该员工当天跨团队考勤总和不能超过1天。", "danger")
-            return redirect(url_for("attendance"))
-
-        if record:
-            record.day_count = day_count
-            record.created_by = current_user.id
-            log_action(
-                "update_attendance",
-                f"更新考勤：{employee.name} {work_date} {day_count}天（{team.name}）",
-            )
-        else:
-            record = Attendance(
-                company_id=current_user.company_id,
-                employee_id=employee_id,
-                team_id=team_id,
-                work_date=work_date,
-                day_count=day_count,
-                created_by=current_user.id,
-            )
-            db.session.add(record)
-            log_action(
-                "create_attendance",
-                f"新增考勤：{employee.name} {work_date} {day_count}天（{team.name}）",
+            # 计算该员工在其它团队的当天工时，保证总和不超过 1
+            other_sum = (
+                db.session.query(func.coalesce(func.sum(Attendance.day_count), 0.0))
+                .filter(
+                    Attendance.employee_id == emp.id,
+                    Attendance.work_date == work_date,
+                    Attendance.team_id != team.id,
+                )
+                .scalar()
             )
 
-        db.session.commit()
-        flash("考勤记录已保存。", "success")
-        return redirect(url_for("attendance"))
+            if other_sum + day_count > 1.0:
+                error_messages.append(f"{emp.name} 超过1天（其它团队已记录 {other_sum} 天）")
+                continue
 
-    logs = (
-        Attendance.query.filter_by(company_id=current_user.company_id)
-        .order_by(Attendance.work_date.desc())
-        .limit(80)
-        .all()
+            if record:
+                record.day_count = day_count
+                record.created_by = current_user.id
+            else:
+                record = Attendance(
+                    company_id=current_user.company_id,
+                    employee_id=emp.id,
+                    team_id=team.id,
+                    work_date=work_date,
+                    day_count=day_count,
+                    created_by=current_user.id,
+                )
+                db.session.add(record)
+            updated_count += 1
+
+        if updated_count:
+            log_action("batch_attendance", f"团队 {team.name} 批量考勤：{work_date}，更新 {updated_count} 人")
+            db.session.commit()
+            flash(f"考勤保存成功，已更新 {updated_count} 人。", "success")
+
+        if error_messages:
+            flash("；".join(error_messages), "danger")
+
+        if not updated_count and not error_messages:
+            flash("未选择任何员工的考勤数据。", "warning")
+
+        return redirect(url_for("team_attendance", team_id=team.id))
+
+    members = team.members
+    if query_text:
+        members = [m for m in members if query_text.lower() in m.name.lower() or query_text in m.phone]
+
+    selected_date_str = request.args.get("work_date", date.today().isoformat())
+    selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
+
+    attendance_map = {}
+    for emp in members:
+        record = Attendance.query.filter_by(employee_id=emp.id, team_id=team.id, work_date=selected_date).first()
+        attendance_map[emp.id] = record.day_count if record else 0
+
+    return render_template(
+        "team_attendance.html",
+        team=team,
+        members=members,
+        attendance_map=attendance_map,
+        selected_date=selected_date,
+        query_text=query_text,
+        today=date.today(),
     )
-    return render_template("attendance.html", teams=teams_data, employees=employees_data, logs=logs, today=date.today())
+
+
+@app.route("/employees")
+@login_required
+def employees():
+    """全局员工查询页（保留快速搜索能力）。"""
+    if not current_user.is_admin:
+        flash("仅管理员可操作。", "danger")
+        return redirect(url_for("dashboard"))
+
+    query_text = request.args.get("q", "").strip()
+    items_query = Employee.query.filter_by(company_id=current_user.company_id)
+    if query_text:
+        items_query = items_query.filter(
+            or_(
+                Employee.name.like(f"%{query_text}%"),
+                Employee.phone.like(f"%{query_text}%"),
+                Employee.bank_account.like(f"%{query_text}%"),
+            )
+        )
+    items = items_query.order_by(Employee.created_at.desc()).all()
+    return render_template("employees.html", items=items, query_text=query_text)
+
+
+@app.route("/attendance")
+@login_required
+def attendance_redirect():
+    """旧入口统一引导到团队页面中的团队考勤入口。"""
+    flash("请先选择团队后再进行考勤。", "info")
+    return redirect(url_for("teams"))
 
 
 @app.route("/advances", methods=["GET", "POST"])
