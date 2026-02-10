@@ -364,8 +364,13 @@ def team_detail(team_id):
             return redirect(url_for("team_detail", team_id=team.id))
 
         if add_mode == "new_employee":
-            name = request.form["name"].strip()
+            raw_name = request.form["name"].strip()
             daily_salary = float(request.form["daily_salary"])
+            is_temp_worker = request.form.get("is_temp_worker", "0") == "1"
+
+            # 若选择临时用工，自动命名为“姓名-临-团队”
+            name = f"{raw_name}-临-{team.name}" if is_temp_worker else raw_name
+
             if Employee.query.filter_by(company_id=current_user.company_id, name=name).first():
                 flash("员工姓名已存在，不允许重复。", "danger")
                 return redirect(url_for("team_detail", team_id=team.id))
@@ -381,44 +386,6 @@ def team_detail(team_id):
             log_action("create_employee_in_team", f"团队 {team.name} 新增员工：{name}")
             db.session.commit()
             flash("员工新增成功，并已加入当前团队。", "success")
-            return redirect(url_for("team_detail", team_id=team.id))
-
-        if add_mode == "temp":
-            try:
-                temp_count = int(request.form["temp_count"])
-                temp_daily_unit_salary = float(request.form["temp_daily_unit_salary"])
-            except (TypeError, ValueError):
-                flash("临时用工参数格式错误，请重新输入。", "danger")
-                return redirect(url_for("team_detail", team_id=team.id))
-
-            if temp_count <= 0 or temp_daily_unit_salary < 0:
-                flash("临时用工人数需大于0，单日工资不能为负数。", "danger")
-                return redirect(url_for("team_detail", team_id=team.id))
-
-            name = f"临时工-{temp_count}-{team.name}"
-            daily_salary = round(temp_count * temp_daily_unit_salary, 2)
-
-            existing_temp = Employee.query.filter_by(company_id=current_user.company_id, name=name).first()
-            if existing_temp:
-                existing_temp.daily_salary = daily_salary
-                if team not in existing_temp.teams:
-                    existing_temp.teams.append(team)
-                log_action("update_temp_employee_in_team", f"团队 {team.name} 更新临时工：{name}，工资={daily_salary}")
-                db.session.commit()
-                flash("已更新同名临时用工记录并加入当前团队。", "success")
-                return redirect(url_for("team_detail", team_id=team.id))
-
-            employee = Employee(
-                company_id=current_user.company_id,
-                name=name,
-                daily_salary=daily_salary,
-                created_by=current_user.id,
-            )
-            employee.teams.append(team)
-            db.session.add(employee)
-            log_action("create_temp_employee_in_team", f"团队 {team.name} 新增临时工：{name}，工资={daily_salary}")
-            db.session.commit()
-            flash("临时用工新增成功，并已加入当前团队。", "success")
             return redirect(url_for("team_detail", team_id=team.id))
 
         flash("未知的新增模式。", "danger")

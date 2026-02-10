@@ -15,7 +15,6 @@
       <ul class="nav nav-tabs mb-3" role="tablist">
         <li class="nav-item"><button class="nav-link {% if not existing_q %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#newEmp" type="button">新增员工</button></li>
         <li class="nav-item"><button class="nav-link {% if existing_q %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#existingEmp" type="button">添加原有员工</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tempEmp" type="button">新增临时用工</button></li>
       </ul>
       <div class="tab-content">
         <div class="tab-pane fade {% if not existing_q %}show active{% endif %}" id="newEmp">
@@ -23,6 +22,18 @@
             <input type="hidden" name="add_mode" value="new_employee">
             <div class="mb-2"><label class="form-label">员工姓名（公司内唯一）</label><input class="form-control" name="name" required></div>
             <div class="mb-2"><label class="form-label">单日工资</label><input class="form-control" name="daily_salary" type="number" min="0" step="0.01" required></div>
+            <div class="mb-2">
+              <label class="form-label d-block">是否为临时用工（默认：否）</label>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="is_temp_worker" id="tempNo" value="0" checked>
+                <label class="form-check-label" for="tempNo">否</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="is_temp_worker" id="tempYes" value="1">
+                <label class="form-check-label" for="tempYes">是</label>
+              </div>
+              <div class="form-text">若选择“是”，保存时自动命名为：姓名-临-{{ team.name }}</div>
+            </div>
             <button class="btn btn-primary">新增员工</button>
           </form>
         </div>
@@ -46,15 +57,6 @@
               </select>
             </div>
             <button class="btn btn-outline-primary">添加到当前团队</button>
-          </form>
-        </div>
-        <div class="tab-pane fade" id="tempEmp">
-          <form method="post">
-            <input type="hidden" name="add_mode" value="temp">
-            <div class="mb-2"><label class="form-label">临时用工人数（X）</label><input class="form-control" name="temp_count" type="number" min="1" step="1" required></div>
-            <div class="mb-2"><label class="form-label">临时工单人单日工资</label><input class="form-control" name="temp_daily_unit_salary" type="number" min="0" step="10" required></div>
-            <div class="form-text mb-2">系统将自动保存为：姓名=临时工-X-{{ team.name }}；单日工资=X*单价。</div>
-            <button class="btn btn-primary">新增临时用工</button>
           </form>
         </div>
       </div>
