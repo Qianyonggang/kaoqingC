@@ -387,10 +387,9 @@ def team_detail(team_id):
     if query_text:
         members = [m for m in members if query_text.lower() in m.name.lower()]
 
-    available_query = Employee.query.filter(
-        Employee.company_id == current_user.company_id,
-        ~Employee.teams.any(Team.id == team.id),
-    )
+    # “原有员工”这里展示公司内全部员工（含已在本团队的员工），
+    # 若重复添加会在提交时提示“已在当前团队中”。
+    available_query = Employee.query.filter(Employee.company_id == current_user.company_id)
     if existing_q:
         available_query = available_query.filter(Employee.name.like(f"%{existing_q}%"))
     available_employees = available_query.order_by(Employee.name.asc()).all()
@@ -558,7 +557,7 @@ def team_attendance(team_id):
         team=team,
         members=members,
         attendance_map=attendance_map,
-        selected_date=selected_date,
+        selected_date_str=selected_date_str,
         query_text=query_text,
         today=date.today(),
     )

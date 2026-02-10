@@ -7,16 +7,16 @@
 </div>
 
 <div class="card p-3 mb-3">
-  <form class="row g-2" method="get">
+  <form id="dateFilterForm" class="row g-2" method="get">
     <div class="col-md-3">
       <label class="form-label">查看日期</label>
-      <input type="date" class="form-control" name="work_date" max="{{ today }}" value="{{ selected_date }}">
+      <input type="date" class="form-control" name="work_date" max="{{ today }}" value="{{ selected_date_str }}" onchange="document.getElementById('dateFilterForm').submit()">
     </div>
     <div class="col-md-5">
       <label class="form-label">员工搜索</label>
       <input class="form-control" name="q" placeholder="按姓名搜索" value="{{ query_text }}">
     </div>
-    <div class="col-md-2 d-flex align-items-end"><button class="btn btn-outline-primary w-100">筛选</button></div>
+    <div class="col-md-2 d-flex align-items-end"><button class="btn btn-outline-primary w-100">确认日期/筛选</button></div>
   </form>
 </div>
 
@@ -24,7 +24,7 @@
   <form method="post">
     <div class="mb-3">
       <label class="form-label">考勤日期</label>
-      <input type="date" class="form-control" name="work_date" max="{{ today }}" value="{{ selected_date }}" required>
+      <input type="date" class="form-control" name="work_date" max="{{ today }}" value="{{ selected_date_str }}" required>
     </div>
 
     <div class="table-responsive">
@@ -51,3 +51,7 @@
   </form>
 </div>
 {% endblock %}
+
+<script>
+// 自动根据日期刷新考勤回显
+</script>
