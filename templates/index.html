@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}欢迎{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8">
+    <div class="card shadow-sm border-0 p-4 text-center">
+      <h1 class="mb-3">企业考勤统计系统</h1>
+      <p class="text-muted">支持多管理员、多团队、共享员工、借支与工资统计。</p>
+      <div class="d-flex justify-content-center gap-3 mt-3">
+        <a href="{{ url_for('register') }}" class="btn btn-primary">公司注册</a>
+        <a href="{{ url_for('login') }}" class="btn btn-outline-primary">登录</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

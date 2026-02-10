@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}团队管理{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card p-3">
+      <h5>新增团队</h5>
+      <form method="post">
+        <div class="mb-2"><label class="form-label">团队名称</label><input class="form-control" name="name" required></div>
+        <div class="mb-2">
+          <label class="form-label">负责人</label>
+          <select class="form-select" name="manager_id" required>
+            {% for a in admins %}<option value="{{ a.id }}">{{ a.username }}</option>{% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-primary">创建团队</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card p-3">
+      <h5>团队列表</h5>
+      <table class="table table-sm">
+        <tr><th>名称</th><th>负责人</th><th>成员数</th></tr>
+        {% for t in items %}
+          <tr><td>{{ t.name }}</td><td>{{ t.manager.username }}</td><td>{{ t.members|length }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

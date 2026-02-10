@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% block title %}员工管理{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card p-3">
+      <h5>新增员工</h5>
+      <form method="post">
+        <div class="mb-2"><label class="form-label">姓名</label><input class="form-control" name="name" required></div>
+        <div class="mb-2"><label class="form-label">联系方式</label><input class="form-control" name="phone" required></div>
+        <div class="mb-2"><label class="form-label">银行卡号</label><input class="form-control" name="bank_account" required></div>
+        <div class="mb-2"><label class="form-label">单日工资</label><input class="form-control" name="daily_salary" type="number" step="0.01" required></div>
+        <div class="mb-2">
+          <label class="form-label">所属团队（可多选）</label>
+          <select class="form-select" name="team_ids" multiple>
+            {% for t in teams %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-primary">新增员工</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card p-3">
+      <h5>员工列表（支持跨团队共享）</h5>
+      <table class="table table-sm align-middle">
+        <tr><th>姓名</th><th>电话</th><th>日薪</th><th>所属团队</th></tr>
+        {% for e in items %}
+          <tr>
+            <td>{{ e.name }}</td><td>{{ e.phone }}</td><td>{{ e.daily_salary }}</td>
+            <td>
+              {% for t in e.teams %}<span class="badge text-bg-light border">{{ t.name }}</span>{% endfor %}
+              <form method="post" action="{{ url_for('assign_teams', employee_id=e.id) }}" class="mt-2">
+                <select class="form-select form-select-sm" name="team_ids" multiple>
+                  {% for t in teams %}
+                    <option value="{{ t.id }}" {% if t in e.teams %}selected{% endif %}>{{ t.name }}</option>
+                  {% endfor %}
+                </select>
+                <button class="btn btn-sm btn-outline-primary mt-1">更新团队</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
