@@ -656,9 +656,13 @@ def payroll():
     year = int(request.args.get("year", date.today().year))
     month = int(request.args.get("month", date.today().month))
     scope = request.args.get("scope", "month")  # month / all
+    employee_q = request.args.get("employee_q", "").strip()
 
     result = []
-    employees_data = Employee.query.filter_by(company_id=current_user.company_id).all()
+    employees_query = Employee.query.filter_by(company_id=current_user.company_id)
+    if employee_q:
+        employees_query = employees_query.filter(Employee.name.like(f"%{employee_q}%"))
+    employees_data = employees_query.all()
 
     # 统计所有出现过的月份（考勤或借支）
     month_keys = set()
@@ -707,6 +711,7 @@ def payroll():
         month=month,
         scope=scope,
         ordered_months=ordered_months,
+        employee_q=employee_q,
     )
 
 
@@ -720,8 +725,12 @@ def export_excel():
     year = int(request.args.get("year", date.today().year))
     month = int(request.args.get("month", date.today().month))
     scope = request.args.get("scope", "month")
+    employee_q = request.args.get("employee_q", "").strip()
 
-    employees_data = Employee.query.filter_by(company_id=current_user.company_id).all()
+    employees_query = Employee.query.filter_by(company_id=current_user.company_id)
+    if employee_q:
+        employees_query = employees_query.filter(Employee.name.like(f"%{employee_q}%"))
+    employees_data = employees_query.all()
 
     # 统计需导出的月份
     month_keys = set()
@@ -769,7 +778,7 @@ def export_excel():
         df.to_excel(writer, index=False, sheet_name="工资统计")
     output.seek(0)
 
-    log_action("export_excel", f"导出工资表：scope={scope}，基准={year}-{month:02d}")
+    log_action("export_excel", f"导出工资表：scope={scope}，关键字={employee_q or '全部'}，基准={year}-{month:02d}")
     db.session.commit()
 
     suffix = "全部月份" if scope == "all" else f"{year}_{month:02d}"

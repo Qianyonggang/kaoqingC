@@ -11,9 +11,12 @@
         <option value="all" {% if scope == 'all' %}selected{% endif %}>全部月份汇总</option>
       </select>
     </div>
+    <div class="col-md-3">
+      <input class="form-control" name="employee_q" value="{{ employee_q }}" placeholder="搜索员工姓名">
+    </div>
     <div class="col-md-2"><button class="btn btn-primary">查询</button></div>
     {% if current_user.is_owner %}
-      <div class="col-md-3"><a class="btn btn-success" href="{{ url_for('export_excel', year=year, month=month, scope=scope) }}">下载 Excel</a></div>
+      <div class="col-md-3"><a class="btn btn-success" href="{{ url_for('export_excel', year=year, month=month, scope=scope, employee_q=employee_q) }}">下载 Excel</a></div>
     {% endif %}
   </form>
 </div>
