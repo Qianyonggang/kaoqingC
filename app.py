@@ -14,6 +14,7 @@ from flask_login import (
 )
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import CheckConstraint, UniqueConstraint, func, or_
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 # =====================
@@ -87,6 +88,8 @@ class Employee(db.Model):
     daily_salary = db.Column(db.Float, nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("company_id", "name", name="uq_company_employee_name"),)
 
     teams = db.relationship("Team", secondary=team_members, backref="members")
     company = db.relationship("Company", backref=db.backref("employees", lazy=True))
@@ -311,6 +314,9 @@ def teams():
     if request.method == "POST":
         name = request.form["name"].strip()
         manager_id = int(request.form["manager_id"])
+        if Team.query.filter_by(company_id=current_user.company_id, name=name).first():
+            flash("团队名称已存在，不允许重复。", "danger")
+            return redirect(url_for("teams"))
         team = Team(company_id=current_user.company_id, name=name, manager_id=manager_id)
         db.session.add(team)
         log_action("create_team", f"新增团队：{name}")
@@ -328,7 +334,7 @@ def teams():
 @app.route("/teams/<int:team_id>", methods=["GET", "POST"])
 @login_required
 def team_detail(team_id):
-    """团队详情页：可在团队内直接新增员工，并维护员工信息。"""
+    """团队详情页：可在团队内直接新增员工，或把原有员工加入团队。"""
     if not current_user.is_admin:
         flash("仅管理员可操作。", "danger")
         return redirect(url_for("dashboard"))
@@ -338,12 +344,36 @@ def team_detail(team_id):
         return redirect(url_for("teams"))
 
     query_text = request.args.get("q", "").strip()
+    existing_q = request.args.get("existing_q", "").strip()
 
     if request.method == "POST":
+        add_mode = request.form.get("add_mode", "new")
+
+        if add_mode == "existing":
+            employee_id = request.form.get("existing_employee_id")
+            if not employee_id:
+                flash("请选择要加入团队的员工。", "warning")
+                return redirect(url_for("team_detail", team_id=team.id))
+            employee = Employee.query.get_or_404(int(employee_id))
+            if not ensure_company_scope(employee):
+                return redirect(url_for("teams"))
+            if team in employee.teams:
+                flash("该员工已在当前团队中。", "info")
+                return redirect(url_for("team_detail", team_id=team.id))
+            employee.teams.append(team)
+            log_action("add_existing_employee_to_team", f"员工 {employee.name} 加入团队 {team.name}")
+            db.session.commit()
+            flash("已成功将原有员工加入当前团队。", "success")
+            return redirect(url_for("team_detail", team_id=team.id))
+
         name = request.form["name"].strip()
         phone = request.form["phone"].strip()
         bank_account = request.form["bank_account"].strip()
         daily_salary = float(request.form["daily_salary"])
+
+        if Employee.query.filter_by(company_id=current_user.company_id, name=name).first():
+            flash("员工姓名已存在，不允许重复。若是原有员工请使用“添加原有员工”。", "danger")
+            return redirect(url_for("team_detail", team_id=team.id))
 
         employee = Employee(
             company_id=current_user.company_id,
@@ -364,7 +394,24 @@ def team_detail(team_id):
     if query_text:
         members = [m for m in members if query_text.lower() in m.name.lower() or query_text in m.phone]
 
-    return render_template("team_detail.html", team=team, members=members, query_text=query_text)
+    available_query = Employee.query.filter(
+        Employee.company_id == current_user.company_id,
+        ~Employee.teams.any(Team.id == team.id),
+    )
+    if existing_q:
+        available_query = available_query.filter(
+            or_(Employee.name.like(f"%{existing_q}%"), Employee.phone.like(f"%{existing_q}%"))
+        )
+    available_employees = available_query.order_by(Employee.name.asc()).all()
+
+    return render_template(
+        "team_detail.html",
+        team=team,
+        members=members,
+        query_text=query_text,
+        existing_q=existing_q,
+        available_employees=available_employees,
+    )
 
 
 @app.route("/teams/<int:team_id>/employees/<int:employee_id>/update", methods=["POST"])
@@ -379,7 +426,17 @@ def team_employee_update(team_id, employee_id):
     if not ensure_company_scope(team) or not ensure_company_scope(employee):
         return redirect(url_for("teams"))
 
-    employee.name = request.form["name"].strip()
+    new_name = request.form["name"].strip()
+    duplicated = Employee.query.filter(
+        Employee.company_id == current_user.company_id,
+        Employee.name == new_name,
+        Employee.id != employee.id,
+    ).first()
+    if duplicated:
+        flash("员工姓名已存在，不允许重复。", "danger")
+        return redirect(url_for("team_detail", team_id=team.id))
+
+    employee.name = new_name
     employee.phone = request.form["phone"].strip()
     employee.bank_account = request.form["bank_account"].strip()
     employee.daily_salary = float(request.form["daily_salary"])
@@ -599,23 +656,59 @@ def advances():
 def payroll():
     year = int(request.args.get("year", date.today().year))
     month = int(request.args.get("month", date.today().month))
+    scope = request.args.get("scope", "month")  # month / all
 
     result = []
     employees_data = Employee.query.filter_by(company_id=current_user.company_id).all()
-    for emp in employees_data:
-        days, advances_amt, gross, remain = calculate_month_stat(emp.id, year, month)
-        result.append(
-            {
-                "name": emp.name,
-                "daily_salary": emp.daily_salary,
-                "days": days,
-                "advances": advances_amt,
-                "gross": gross,
-                "remain": remain,
-            }
-        )
 
-    return render_template("payroll.html", rows=result, year=year, month=month)
+    # 统计所有出现过的月份（考勤或借支）
+    month_keys = set()
+    if scope == "all":
+        att_dates = db.session.query(Attendance.work_date).filter_by(company_id=current_user.company_id).all()
+        adv_dates = db.session.query(Advance.advance_date).filter_by(company_id=current_user.company_id).all()
+        for (d,) in att_dates:
+            month_keys.add((d.year, d.month))
+        for (d,) in adv_dates:
+            month_keys.add((d.year, d.month))
+        if not month_keys:
+            month_keys.add((year, month))
+    else:
+        month_keys.add((year, month))
+
+    ordered_months = sorted(month_keys)
+
+    for emp in employees_data:
+        row = {
+            "name": emp.name,
+            "daily_salary": emp.daily_salary,
+            "total_days": 0.0,
+            "total_advances": 0.0,
+            "total_gross": 0.0,
+            "total_remain": 0.0,
+            "month_days": {},
+        }
+        for y, m in ordered_months:
+            days, advances_amt, gross, remain = calculate_month_stat(emp.id, y, m)
+            row["month_days"][(y, m)] = days
+            row["total_days"] += days
+            row["total_advances"] += advances_amt
+            row["total_gross"] += gross
+            row["total_remain"] += remain
+
+        row["total_days"] = round(row["total_days"], 2)
+        row["total_advances"] = round(row["total_advances"], 2)
+        row["total_gross"] = round(row["total_gross"], 2)
+        row["total_remain"] = round(row["total_remain"], 2)
+        result.append(row)
+
+    return render_template(
+        "payroll.html",
+        rows=result,
+        year=year,
+        month=month,
+        scope=scope,
+        ordered_months=ordered_months,
+    )
 
 
 @app.route("/export")
@@ -627,26 +720,51 @@ def export_excel():
 
     year = int(request.args.get("year", date.today().year))
     month = int(request.args.get("month", date.today().month))
+    scope = request.args.get("scope", "month")
+
+    employees_data = Employee.query.filter_by(company_id=current_user.company_id).all()
+
+    # 统计需导出的月份
+    month_keys = set()
+    if scope == "all":
+        att_dates = db.session.query(Attendance.work_date).filter_by(company_id=current_user.company_id).all()
+        adv_dates = db.session.query(Advance.advance_date).filter_by(company_id=current_user.company_id).all()
+        for (d,) in att_dates:
+            month_keys.add((d.year, d.month))
+        for (d,) in adv_dates:
+            month_keys.add((d.year, d.month))
+        if not month_keys:
+            month_keys.add((year, month))
+    else:
+        month_keys.add((year, month))
+
+    ordered_months = sorted(month_keys)
 
     rows = []
-    for team in Team.query.filter_by(company_id=current_user.company_id).all():
-        for emp in team.members:
-            days, advances_amt, gross, remain = calculate_month_stat(emp.id, year, month)
-            rows.append(
-                {
-                    "团队": team.name,
-                    "员工姓名": emp.name,
-                    "联系方式": emp.phone,
-                    "银行卡号": emp.bank_account,
-                    "年份": year,
-                    "月份": month,
-                    "当月考勤天数": days,
-                    "单日工资": emp.daily_salary,
-                    "借支": advances_amt,
-                    "总工资": gross,
-                    "剩余工资": remain,
-                }
-            )
+    for emp in employees_data:
+        row = {
+            "员工姓名": emp.name,
+            "联系方式": emp.phone,
+            "银行卡号": emp.bank_account,
+            "单日工资": emp.daily_salary,
+        }
+        total_days = 0.0
+        total_advances = 0.0
+        total_gross = 0.0
+
+        for y, m in ordered_months:
+            days, advances_amt, gross, _remain = calculate_month_stat(emp.id, y, m)
+            ym_label = f"{y}年{m}月"
+            row[f"{ym_label}考勤天数"] = days
+            total_days += days
+            total_advances += advances_amt
+            total_gross += gross
+
+        row["总考勤天数"] = round(total_days, 2)
+        row["总借支"] = round(total_advances, 2)
+        row["总工资"] = round(total_gross, 2)
+        row["剩余工资"] = round(total_gross - total_advances, 2)
+        rows.append(row)
 
     df = pd.DataFrame(rows)
     output = BytesIO()
@@ -654,13 +772,14 @@ def export_excel():
         df.to_excel(writer, index=False, sheet_name="工资统计")
     output.seek(0)
 
-    log_action("export_excel", f"导出工资表：{year}-{month:02d}")
+    log_action("export_excel", f"导出工资表：scope={scope}，基准={year}-{month:02d}")
     db.session.commit()
 
+    suffix = "全部月份" if scope == "all" else f"{year}_{month:02d}"
     return send_file(
         output,
         as_attachment=True,
-        download_name=f"工资统计_{year}_{month:02d}.xlsx",
+        download_name=f"工资统计_{suffix}.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
