@@ -14,6 +14,7 @@ from flask_login import (
 )
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import CheckConstraint, UniqueConstraint, extract, func
+from sqlalchemy.exc import OperationalError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 # =====================
@@ -22,7 +23,15 @@ from werkzeug.security import check_password_hash, generate_password_hash
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "attendance-dev-secret")
 # 本地调试默认使用 MySQL（可通过 DATABASE_URL 覆盖）
-default_mysql_url = "mysql+pymysql://attendance:attendance@127.0.0.1:3306/attendance?charset=utf8mb4"
+mysql_user = os.getenv("MYSQL_USER", "attendance")
+mysql_password = os.getenv("MYSQL_PASSWORD", "attendance")
+mysql_host = os.getenv("MYSQL_HOST", "127.0.0.1")
+mysql_port = os.getenv("MYSQL_PORT", "3306")
+mysql_db = os.getenv("MYSQL_DB", "attendance")
+mysql_charset = os.getenv("MYSQL_CHARSET", "utf8mb4")
+default_mysql_url = (
+    f"mysql+pymysql://{mysql_user}:{mysql_password}@{mysql_host}:{mysql_port}/{mysql_db}?charset={mysql_charset}"
+)
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", default_mysql_url)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
@@ -964,5 +973,13 @@ def logs():
 
 if __name__ == "__main__":
     with app.app_context():
-        db.create_all()
+        try:
+            db.create_all()
+        except OperationalError as exc:
+            print("\n[数据库连接失败] 无法连接到 MySQL，请检查以下配置：")
+            print(f"- 当前 SQLALCHEMY_DATABASE_URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
+            print("- MySQL 服务是否已启动")
+            print("- 账号密码/端口/库名是否正确（可通过 MYSQL_USER/MYSQL_PASSWORD/MYSQL_HOST/MYSQL_PORT/MYSQL_DB 或 DATABASE_URL 覆盖）")
+            print(f"- 原始错误: {exc}\n")
+            raise SystemExit(1)
     app.run(host="0.0.0.0", port=5000, debug=True)
