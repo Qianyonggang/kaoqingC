@@ -2,8 +2,6 @@ import os
 from datetime import date, datetime
 from io import BytesIO
 
-from dotenv import load_dotenv
-
 import pandas as pd
 from flask import Flask, flash, redirect, render_template, request, send_file, url_for
 from flask_login import (
@@ -21,17 +19,12 @@ from werkzeug.security import check_password_hash, generate_password_hash
 # =====================
 # 基础配置
 # =====================
-load_dotenv()
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "please-change-in-production")
-# 生产默认使用 MySQL（可通过 DATABASE_URL 覆盖）
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "attendance-dev-secret")
+# 本地调试默认使用 MySQL（可通过 DATABASE_URL 覆盖）
 default_mysql_url = "mysql+pymysql://attendance:attendance@127.0.0.1:3306/attendance?charset=utf8mb4"
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", default_mysql_url)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_pre_ping": True,
-    "pool_recycle": 1800,
-}
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -972,5 +965,4 @@ def logs():
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
-    debug_mode = os.getenv("FLASK_DEBUG", "0") == "1"
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=debug_mode)
+    app.run(host="0.0.0.0", port=5000, debug=True)
