@@ -159,7 +159,6 @@ kaoqingC/
 - 接入短信验证码登录
 - 增加角色细分（只读管理员/财务管理员）
 - 增加图表分析（团队月趋势、员工出勤率）
-- 上云部署（阿里云、腾讯云、Railway、Render）
 - 增加数据备份与恢复
 
 ---
@@ -173,13 +172,150 @@ kaoqingC/
 在 `app.py` 最底部把 `port=5000` 改成你想要的端口，比如 8000。
 
 ### Q3：生产环境能直接用吗？
-本项目当前是本地部署演示版，生产建议：
-- 使用 Gunicorn/uWSGI
-- 使用 Nginx 反向代理
-- 切换 MySQL/PostgreSQL
-- 配置 HTTPS 和更强密码策略
+可以。当前项目已经支持以 SQLite 作为生产数据库（适合你现在“<10 个管理员”场景）。
+推荐部署方式：
+- Flask + Gunicorn（单 worker 或低 worker）
+- Nginx 反向代理
+- HTTPS（域名 + 证书）
+- 定时备份 `attendance.db`
+
+---
+
+## 9. 阿里云部署指南（SQLite 方案）
+
+> 适用场景：管理员人数少、并发压力低（你当前约 10 人以内）。
+
+### 9.1 服务器准备
+
+1. 在阿里云购买 ECS（推荐 Ubuntu 22.04）。
+2. 安全组放行端口：
+   - 22（SSH）
+   - 80（HTTP）
+   - 443（HTTPS）
+3. 通过 SSH 登录服务器。
+
+### 9.2 安装基础环境
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip nginx
+```
+
+### 9.3 上传并部署项目
+
+```bash
+# 假设部署目录
+sudo mkdir -p /opt/kaoqingC
+sudo chown -R $USER:$USER /opt/kaoqingC
+cd /opt/kaoqingC
+
+# 上传你的项目代码到这里（git/scp/ftp 都可）
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
+```
+
+### 9.4 配置生产环境变量
+
+```bash
+cat > /opt/kaoqingC/.env << 'EOF'
+SECRET_KEY=请替换成一段足够随机的长字符串
+DATABASE_URL=sqlite:////opt/kaoqingC/data/attendance.db
+FLASK_DEBUG=0
+PORT=5000
+EOF
+
+mkdir -p /opt/kaoqingC/data
+```
+
+> 注意：`sqlite:////opt/kaoqingC/data/attendance.db` 是绝对路径写法（4 个 `/`）。
+
+### 9.5 初始化数据库
+
+```bash
+cd /opt/kaoqingC
+source .venv/bin/activate
+export $(grep -v '^#' .env | xargs)
+python app.py
+# 首次看到数据库创建后可 Ctrl+C 停掉
+```
+
+### 9.6 用 systemd 托管 Gunicorn
+
+创建服务文件：
+
+```bash
+sudo tee /etc/systemd/system/kaoqing.service > /dev/null << 'EOF'
+[Unit]
+Description=Kaoqing Flask App (Gunicorn)
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/kaoqingC
+EnvironmentFile=/opt/kaoqingC/.env
+ExecStart=/opt/kaoqingC/.venv/bin/gunicorn -w 1 -b 127.0.0.1:5000 app:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+设置目录权限并启动：
+
+```bash
+sudo chown -R www-data:www-data /opt/kaoqingC
+sudo systemctl daemon-reload
+sudo systemctl enable kaoqing
+sudo systemctl restart kaoqing
+sudo systemctl status kaoqing
+```
+
+### 9.7 配置 Nginx 反向代理
+
+```bash
+sudo tee /etc/nginx/sites-available/kaoqing > /dev/null << 'EOF'
+server {
+    listen 80;
+    server_name 你的域名或公网IP;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+sudo ln -sf /etc/nginx/sites-available/kaoqing /etc/nginx/sites-enabled/kaoqing
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+### 9.8（可选）配置 HTTPS
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d 你的域名
+```
+
+### 9.9 备份策略（SQLite 重点）
+
+建议每天备份数据库文件：
+
+```bash
+mkdir -p /opt/kaoqingC/backup
+cp /opt/kaoqingC/data/attendance.db /opt/kaoqingC/backup/attendance_$(date +%F).db
+```
+
+可再配合 crontab 做定时任务。
 
 ---
 
 如果你愿意，我下一步可以继续帮你做：
-1）员工头像上传；2）批量导入员工；3）按团队独立导出 Excel；4）一键 Docker 部署。
+1）一键部署脚本（含 systemd + nginx）；2）自动备份脚本（含保留策略）；3）Docker 部署版本。
