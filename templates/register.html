@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}公司注册{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card shadow-sm border-0 p-4">
+      <h4 class="mb-3">注册公司账号（创建者自动为超级管理员）</h4>
+      <form method="post">
+        <div class="mb-3"><label class="form-label">公司名称</label><input class="form-control" name="company_name" required></div>
+        <div class="mb-3"><label class="form-label">创建者用户名</label><input class="form-control" name="username" required></div>
+        <div class="mb-3"><label class="form-label">密码</label><input type="password" class="form-control" name="password" required></div>
+        <button class="btn btn-primary w-100">立即注册</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

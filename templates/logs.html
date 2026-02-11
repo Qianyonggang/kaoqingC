@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}操作日志{% endblock %}
+{% block content %}
+<div class="card p-3">
+  <h5>全局操作日志（仅创建者可见）</h5>
+  <table class="table table-sm">
+    <tr><th>时间</th><th>操作者</th><th>动作</th><th>详情</th></tr>
+    {% for i in items %}
+      <tr><td>{{ i.created_at }}</td><td>{{ i.operator.username }}</td><td>{{ i.action }}</td><td>{{ i.detail }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

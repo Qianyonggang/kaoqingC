@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}员工考勤详情{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">员工：{{ employee.name }}（月度考勤详情）</h4>
+  <a class="btn btn-outline-secondary" href="{{ url_for('employees') }}">返回员工总览</a>
+</div>
+
+<div class="card p-3 mb-3">
+  <form class="row g-2" method="get">
+    <div class="col-md-2"><input class="form-control" name="year" type="number" value="{{ year }}"></div>
+    <div class="col-md-2"><input class="form-control" name="month" type="number" min="1" max="12" value="{{ month }}"></div>
+    <div class="col-md-2"><button class="btn btn-primary">查询</button></div>
+  </form>
+</div>
+
+<div class="card p-3 mb-3">
+  <h5>{{ year }}年{{ month }}月汇总</h5>
+  <div class="row g-2">
+    <div class="col-md-3">考勤天数：<strong>{{ month_days }}</strong></div>
+    <div class="col-md-3">借支：<strong>{{ month_advances }}</strong></div>
+    <div class="col-md-3">总工资：<strong>{{ month_gross }}</strong></div>
+    <div class="col-md-3">剩余工资：<strong>{{ month_remain }}</strong></div>
+  </div>
+</div>
+
+<div class="card p-3">
+  <h5>{{ year }}年{{ month }}月每日考勤明细</h5>
+  <table class="table table-sm align-middle">
+    <tr><th>日期</th><th>团队</th><th>考勤天数</th><th>登记人</th></tr>
+    {% for r in detail_rows %}
+      <tr>
+        <td>{{ r.work_date }}</td>
+        <td>{{ r.team_name }}</td>
+        <td>{{ r.day_count }}</td>
+        <td>{{ r.operator }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="text-muted">该月暂无考勤记录</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
