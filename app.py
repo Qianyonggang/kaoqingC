@@ -114,6 +114,20 @@ class Attendance(db.Model):
     team = db.relationship("Team", backref=db.backref("attendance_logs", lazy=True))
 
 
+class AttendanceNote(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("company.id"), nullable=False)
+    team_id = db.Column(db.Integer, db.ForeignKey("team.id"), nullable=False)
+    note_date = db.Column(db.Date, nullable=False)
+    note = db.Column(db.String(500), default="")
+    created_by = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("company_id", "team_id", "note_date", name="uq_attendance_note_team_date"),)
+
+    team = db.relationship("Team", backref=db.backref("attendance_notes", lazy=True))
+
+
 class Advance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     company_id = db.Column(db.Integer, db.ForeignKey("company.id"), nullable=False)
@@ -495,6 +509,7 @@ def team_attendance(team_id):
 
     if request.method == "POST":
         work_date = datetime.strptime(request.form["work_date"], "%Y-%m-%d").date()
+        attendance_note_text = request.form.get("attendance_note", "").strip()
         if work_date > date.today():
             flash("不能记录未来日期的考勤。", "danger")
             return redirect(url_for("team_attendance", team_id=team.id, work_date=work_date.isoformat(), q=query_text))
@@ -540,10 +555,31 @@ def team_attendance(team_id):
                 db.session.add(record)
             updated_count += 1
 
+        # 保存当日团队整体备注（允许为空）
+        note_obj = AttendanceNote.query.filter_by(
+            company_id=current_user.company_id,
+            team_id=team.id,
+            note_date=work_date,
+        ).first()
+        if note_obj:
+            note_obj.note = attendance_note_text
+            note_obj.created_by = current_user.id
+        else:
+            note_obj = AttendanceNote(
+                company_id=current_user.company_id,
+                team_id=team.id,
+                note_date=work_date,
+                note=attendance_note_text,
+                created_by=current_user.id,
+            )
+            db.session.add(note_obj)
+
         if updated_count:
             log_action("batch_attendance", f"团队 {team.name} 批量考勤：{work_date}，更新 {updated_count} 人")
             db.session.commit()
             flash(f"考勤保存成功，已更新 {updated_count} 人。", "success")
+        else:
+            db.session.commit()
 
         if error_messages:
             flash("；".join(error_messages), "danger")
@@ -569,6 +605,13 @@ def team_attendance(team_id):
         record = Attendance.query.filter_by(employee_id=emp.id, team_id=team.id, work_date=selected_date).first()
         attendance_map[emp.id] = record.day_count if record else 0
 
+    note_obj = AttendanceNote.query.filter_by(
+        company_id=current_user.company_id,
+        team_id=team.id,
+        note_date=selected_date,
+    ).first()
+    attendance_note_text = note_obj.note if note_obj else ""
+
     return render_template(
         "team_attendance.html",
         team=team,
@@ -577,6 +620,7 @@ def team_attendance(team_id):
         selected_date_str=selected_date_str,
         query_text=query_text,
         today=date.today(),
+        attendance_note_text=attendance_note_text,
     )
 
 
@@ -594,6 +638,59 @@ def employees():
         items_query = items_query.filter(Employee.name.like(f"%{query_text}%"))
     items = items_query.order_by(Employee.created_at.desc()).all()
     return render_template("employees.html", items=items, query_text=query_text)
+
+
+@app.route("/employee/<int:employee_id>/detail")
+@login_required
+def employee_detail(employee_id):
+    """员工详情：查看某月每日考勤明细、登记人及月汇总。"""
+    if not current_user.is_admin:
+        flash("仅管理员可查看。", "danger")
+        return redirect(url_for("dashboard"))
+
+    employee = Employee.query.get_or_404(employee_id)
+    if not ensure_company_scope(employee):
+        return redirect(url_for("employees"))
+
+    year = int(request.args.get("year", date.today().year))
+    month = int(request.args.get("month", date.today().month))
+
+    logs = (
+        Attendance.query.filter(
+            Attendance.company_id == current_user.company_id,
+            Attendance.employee_id == employee.id,
+            func.strftime("%Y", Attendance.work_date) == str(year),
+            func.strftime("%m", Attendance.work_date) == f"{month:02d}",
+        )
+        .order_by(Attendance.work_date.asc())
+        .all()
+    )
+
+    detail_rows = []
+    for item in logs:
+        operator = User.query.get(item.created_by)
+        detail_rows.append(
+            {
+                "work_date": item.work_date,
+                "team_name": item.team.name,
+                "day_count": item.day_count,
+                "operator": operator.username if operator else "未知",
+            }
+        )
+
+    days, advances_amt, gross, remain = calculate_month_stat(employee.id, year, month)
+
+    return render_template(
+        "employee_detail.html",
+        employee=employee,
+        year=year,
+        month=month,
+        detail_rows=detail_rows,
+        month_days=days,
+        month_advances=advances_amt,
+        month_gross=gross,
+        month_remain=remain,
+    )
 
 
 @app.route("/attendance")
@@ -704,6 +801,34 @@ def payroll():
         row["total_remain"] = round(row["total_remain"], 2)
         result.append(row)
 
+    # 备注信息展示
+    month_notes = []
+    all_notes_matrix = []
+    if scope == "month":
+        notes = (
+            AttendanceNote.query.filter(
+                AttendanceNote.company_id == current_user.company_id,
+                func.strftime("%Y", AttendanceNote.note_date) == str(year),
+                func.strftime("%m", AttendanceNote.note_date) == f"{month:02d}",
+            )
+            .order_by(AttendanceNote.note_date.asc())
+            .all()
+        )
+        for n in notes:
+            month_notes.append({"date": n.note_date, "team": n.team.name, "note": n.note})
+    else:
+        notes = AttendanceNote.query.filter_by(company_id=current_user.company_id).all()
+        buckets = {}
+        for n in notes:
+            key = (n.note_date.year, n.note_date.month)
+            if key not in buckets:
+                buckets[key] = {"year": key[0], "month": key[1], "days": {d: "" for d in range(1, 32)}}
+            day = n.note_date.day
+            existing = buckets[key]["days"][day]
+            text = f"{n.team.name}:{n.note}" if n.note else f"{n.team.name}:（空备注）"
+            buckets[key]["days"][day] = (existing + "；" + text).strip("；") if existing else text
+        all_notes_matrix = [buckets[k] for k in sorted(buckets.keys())]
+
     return render_template(
         "payroll.html",
         rows=result,
@@ -712,6 +837,8 @@ def payroll():
         scope=scope,
         ordered_months=ordered_months,
         employee_q=employee_q,
+        month_notes=month_notes,
+        all_notes_matrix=all_notes_matrix,
     )
 
 
@@ -776,6 +903,33 @@ def export_excel():
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="工资统计")
+
+        # 备注信息同导出
+        if scope == "month":
+            note_rows = []
+            notes = (
+                AttendanceNote.query.filter(
+                    AttendanceNote.company_id == current_user.company_id,
+                    func.strftime("%Y", AttendanceNote.note_date) == str(year),
+                    func.strftime("%m", AttendanceNote.note_date) == f"{month:02d}",
+                )
+                .order_by(AttendanceNote.note_date.asc())
+                .all()
+            )
+            for n in notes:
+                note_rows.append({"日期": n.note_date, "团队": n.team.name, "备注": n.note})
+            pd.DataFrame(note_rows).to_excel(writer, index=False, sheet_name="考勤备注")
+        else:
+            notes = AttendanceNote.query.filter_by(company_id=current_user.company_id).all()
+            buckets = {}
+            for n in notes:
+                key = (n.note_date.year, n.note_date.month)
+                if key not in buckets:
+                    buckets[key] = {"年月": f"{key[0]}年{key[1]}月", **{str(d): "" for d in range(1, 32)}}
+                d = str(n.note_date.day)
+                text = f"{n.team.name}:{n.note}" if n.note else f"{n.team.name}:（空备注）"
+                buckets[key][d] = (buckets[key][d] + "；" + text).strip("；") if buckets[key][d] else text
+            pd.DataFrame([buckets[k] for k in sorted(buckets.keys())]).to_excel(writer, index=False, sheet_name="备注矩阵")
     output.seek(0)
 
     log_action("export_excel", f"导出工资表：scope={scope}，关键字={employee_q or '全部'}，基准={year}-{month:02d}")

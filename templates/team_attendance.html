@@ -24,6 +24,11 @@
   <form method="post">
     <input type="hidden" name="work_date" value="{{ selected_date_str }}">
 
+    <div class="mb-3">
+      <label class="form-label">当日整体备注（团队）</label>
+      <textarea class="form-control" name="attendance_note" rows="2" placeholder="输入该考勤日期的整体备注信息...">{{ attendance_note_text }}</textarea>
+    </div>
+
     <div class="table-responsive">
       <table class="table table-sm align-middle">
         <tr><th>员工</th><th>考勤（单选按钮）</th></tr>

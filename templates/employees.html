@@ -15,15 +15,16 @@
   </form>
 
   <table class="table table-sm align-middle">
-    <tr><th>姓名</th><th>日薪</th><th>所属团队</th></tr>
+    <tr><th>姓名</th><th>日薪</th><th>所属团队</th><th>详情</th></tr>
     {% for e in items %}
       <tr>
         <td>{{ e.name }}</td>
         <td>{{ e.daily_salary }}</td>
         <td>{% for t in e.teams %}<span class="badge text-bg-light border">{{ t.name }}</span> {% endfor %}</td>
+        <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('employee_detail', employee_id=e.id) }}">查看详情</a></td>
       </tr>
     {% else %}
-      <tr><td colspan="3" class="text-muted">没有匹配员工</td></tr>
+      <tr><td colspan="4" class="text-muted">没有匹配员工</td></tr>
     {% endfor %}
   </table>
 </div>

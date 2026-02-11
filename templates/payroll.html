@@ -20,7 +20,7 @@
     {% endif %}
   </form>
 </div>
-<div class="card p-3">
+<div class="card p-3 mb-3">
   <h5>{% if scope == 'all' %}全部月份工资汇总{% else %}{{ year }}年{{ month }}月工资汇总{% endif %}</h5>
   <div class="table-responsive">
     <table class="table table-sm align-middle">
@@ -50,5 +50,38 @@
       {% endfor %}
     </table>
   </div>
+</div>
+
+<div class="card p-3">
+  <h5>考勤备注信息</h5>
+  {% if scope == 'month' %}
+    <table class="table table-sm align-middle">
+      <tr><th>日期</th><th>团队</th><th>备注</th></tr>
+      {% for n in month_notes %}
+        <tr><td>{{ n.date }}</td><td>{{ n.team }}</td><td>{{ n.note }}</td></tr>
+      {% else %}
+        <tr><td colspan="3" class="text-muted">该月暂无备注</td></tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <tr>
+          <th>年月</th>
+          {% for d in range(1, 32) %}<th>{{ d }}</th>{% endfor %}
+        </tr>
+        {% for row in all_notes_matrix %}
+          <tr>
+            <td>{{ row.year }}年{{ row.month }}月</td>
+            {% for d in range(1, 32) %}
+              <td>{{ row.days[d] }}</td>
+            {% endfor %}
+          </tr>
+        {% else %}
+          <tr><td colspan="32" class="text-muted">暂无备注矩阵数据</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  {% endif %}
 </div>
 {% endblock %}
