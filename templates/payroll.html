@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}工资统计{% endblock %}
+{% block content %}
+<div class="card p-3 mb-3">
+  <form class="row g-2" method="get">
+    <div class="col-md-2"><input class="form-control" name="year" type="number" value="{{ year }}"></div>
+    <div class="col-md-2"><input class="form-control" name="month" type="number" min="1" max="12" value="{{ month }}"></div>
+    <div class="col-md-3">
+      <select class="form-select" name="scope">
+        <option value="month" {% if scope == 'month' %}selected{% endif %}>仅当前年月</option>
+        <option value="all" {% if scope == 'all' %}selected{% endif %}>全部月份汇总</option>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <input class="form-control" name="employee_q" value="{{ employee_q }}" placeholder="搜索员工姓名">
+    </div>
+    <div class="col-md-2"><button class="btn btn-primary">查询</button></div>
+    {% if current_user.is_owner %}
+      <div class="col-md-3"><a class="btn btn-success" href="{{ url_for('export_excel', year=year, month=month, scope=scope, employee_q=employee_q) }}">下载 Excel</a></div>
+    {% endif %}
+  </form>
+</div>
+<div class="card p-3 mb-3">
+  <h5>{% if scope == 'all' %}全部月份工资汇总{% else %}{{ year }}年{{ month }}月工资汇总{% endif %}</h5>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <tr>
+        <th>姓名</th>
+        <th>单日工资</th>
+        {% for y, m in ordered_months %}
+          <th>{{ y }}年{{ m }}月天数</th>
+        {% endfor %}
+        <th>总天数</th>
+        <th>总借支</th>
+        <th>总工资</th>
+        <th>剩余工资</th>
+      </tr>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r.name }}</td>
+          <td>{{ r.daily_salary }}</td>
+          {% for y, m in ordered_months %}
+            <td>{{ r.month_days[(y, m)] }}</td>
+          {% endfor %}
+          <td>{{ r.total_days }}</td>
+          <td>{{ r.total_advances }}</td>
+          <td>{{ r.total_gross }}</td>
+          <td>{{ r.total_remain }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<div class="card p-3">
+  <h5>考勤备注信息</h5>
+  {% if scope == 'month' %}
+    <table class="table table-sm align-middle">
+      <tr><th>日期</th><th>团队</th><th>备注</th></tr>
+      {% for n in month_notes %}
+        <tr><td>{{ n.date }}</td><td>{{ n.team }}</td><td>{{ n.note }}</td></tr>
+      {% else %}
+        <tr><td colspan="3" class="text-muted">该月暂无备注</td></tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <tr>
+          <th>年月</th>
+          {% for d in range(1, 32) %}<th>{{ d }}</th>{% endfor %}
+        </tr>
+        {% for row in all_notes_matrix %}
+          <tr>
+            <td>{{ row.year }}年{{ row.month }}月</td>
+            {% for d in range(1, 32) %}
+              <td>{{ row.days[d] }}</td>
+            {% endfor %}
+          </tr>
+        {% else %}
+          <tr><td colspan="32" class="text-muted">暂无备注矩阵数据</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
