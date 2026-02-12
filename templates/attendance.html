@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}考勤记录{% endblock %}
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card p-3">
+      <h5>记录/修改考勤</h5>
+      <form method="post">
+        <div class="mb-2"><label class="form-label">员工</label><select class="form-select" name="employee_id">{% for e in employees %}<option value="{{ e.id }}">{{ e.name }}</option>{% endfor %}</select></div>
+        <div class="mb-2"><label class="form-label">团队</label><select class="form-select" name="team_id">{% for t in teams %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
+        <div class="mb-2"><label class="form-label">日期</label><input class="form-control" name="work_date" type="date" max="{{ today }}" required></div>
+        <div class="mb-2"><label class="form-label">考勤天数</label><select class="form-select" name="day_count"><option value="0">0天</option><option value="0.5">0.5天</option><option value="1">1天</option></select></div>
+        <button class="btn btn-primary">保存</button>
+      </form>
+      <small class="text-muted mt-2">同一员工同一天跨团队考勤总和不能超过1天。</small>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card p-3">
+      <h5>最近考勤记录</h5>
+      <table class="table table-sm">
+        <tr><th>日期</th><th>员工</th><th>团队</th><th>天数</th></tr>
+        {% for item in logs %}
+          <tr><td>{{ item.work_date }}</td><td>{{ item.employee.name }}</td><td>{{ item.team.name }}</td><td>{{ item.day_count }}</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

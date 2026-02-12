@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}团队考勤{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">团队考勤：{{ team.name }}</h4>
+  <a class="btn btn-outline-secondary" href="{{ url_for('teams') }}">返回团队列表</a>
+</div>
+
+<div class="card p-3 mb-3">
+  <form id="dateFilterForm" class="row g-2" method="get">
+    <div class="col-md-4">
+      <label class="form-label">考勤日期</label>
+      <input type="date" class="form-control" name="work_date" max="{{ today }}" value="{{ selected_date_str }}" onchange="document.getElementById('dateFilterForm').submit()">
+    </div>
+    <div class="col-md-5">
+      <label class="form-label">员工搜索</label>
+      <input class="form-control" name="q" placeholder="按姓名搜索" value="{{ query_text }}">
+    </div>
+    <div class="col-md-3 d-flex align-items-end"><button class="btn btn-outline-primary w-100">筛选</button></div>
+  </form>
+</div>
+
+<div class="card p-3">
+  <form method="post">
+    <input type="hidden" name="work_date" value="{{ selected_date_str }}">
+
+    <div class="mb-3">
+      <label class="form-label">当日整体备注（团队）</label>
+      <textarea class="form-control" name="attendance_note" rows="2" placeholder="输入该考勤日期的整体备注信息...">{{ attendance_note_text }}</textarea>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <tr><th>员工</th><th>考勤（单选按钮）</th></tr>
+        {% for e in members %}
+          <tr>
+            <td>{{ e.name }}</td>
+            <td>
+              <div class="d-flex gap-3">
+                <label><input type="radio" name="attendance_{{ e.id }}" value="0" {% if attendance_map[e.id] == 0 %}checked{% endif %}> 0天</label>
+                <label><input type="radio" name="attendance_{{ e.id }}" value="0.5" {% if attendance_map[e.id] == 0.5 %}checked{% endif %}> 0.5天</label>
+                <label><input type="radio" name="attendance_{{ e.id }}" value="1" {% if attendance_map[e.id] == 1 %}checked{% endif %}> 1天</label>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="2" class="text-muted">当前筛选条件下无员工</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <button class="btn btn-primary">保存该团队当天考勤</button>
+  </form>
+</div>
+{% endblock %}
