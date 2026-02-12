@@ -13,7 +13,7 @@ from flask_login import (
     logout_user,
 )
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import CheckConstraint, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, UniqueConstraint, extract, func
 from werkzeug.security import check_password_hash, generate_password_hash
 
 # =====================
@@ -21,8 +21,16 @@ from werkzeug.security import check_password_hash, generate_password_hash
 # =====================
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "attendance-dev-secret")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///attendance.db")
+
+# 默认使用 SQLite（支持通过 DATABASE_URL 覆盖），并统一放在 data 目录
+base_dir = os.path.abspath(os.path.dirname(__file__))
+default_db_path = os.path.join(base_dir, "data", "attendance.db")
+default_sqlite_url = f"sqlite:///{default_db_path.replace(os.sep, '/')}"
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", default_sqlite_url)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "connect_args": {"timeout": 30},
+}
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -185,8 +193,8 @@ def calculate_month_stat(employee_id: int, year: int, month: int):
         db.session.query(func.coalesce(func.sum(Attendance.day_count), 0.0))
         .filter(
             Attendance.employee_id == employee_id,
-            func.strftime("%Y", Attendance.work_date) == str(year),
-            func.strftime("%m", Attendance.work_date) == f"{month:02d}",
+            extract("year", Attendance.work_date) == year,
+            extract("month", Attendance.work_date) == month,
         )
         .scalar()
     )
@@ -195,8 +203,8 @@ def calculate_month_stat(employee_id: int, year: int, month: int):
         db.session.query(func.coalesce(func.sum(Advance.amount), 0.0))
         .filter(
             Advance.employee_id == employee_id,
-            func.strftime("%Y", Advance.advance_date) == str(year),
-            func.strftime("%m", Advance.advance_date) == f"{month:02d}",
+            extract("year", Advance.advance_date) == year,
+            extract("month", Advance.advance_date) == month,
         )
         .scalar()
     )
@@ -659,8 +667,8 @@ def employee_detail(employee_id):
         Attendance.query.filter(
             Attendance.company_id == current_user.company_id,
             Attendance.employee_id == employee.id,
-            func.strftime("%Y", Attendance.work_date) == str(year),
-            func.strftime("%m", Attendance.work_date) == f"{month:02d}",
+            extract("year", Attendance.work_date) == year,
+            extract("month", Attendance.work_date) == month,
         )
         .order_by(Attendance.work_date.asc())
         .all()
@@ -808,8 +816,8 @@ def payroll():
         notes = (
             AttendanceNote.query.filter(
                 AttendanceNote.company_id == current_user.company_id,
-                func.strftime("%Y", AttendanceNote.note_date) == str(year),
-                func.strftime("%m", AttendanceNote.note_date) == f"{month:02d}",
+                extract("year", AttendanceNote.note_date) == year,
+                extract("month", AttendanceNote.note_date) == month,
             )
             .order_by(AttendanceNote.note_date.asc())
             .all()
@@ -910,8 +918,8 @@ def export_excel():
             notes = (
                 AttendanceNote.query.filter(
                     AttendanceNote.company_id == current_user.company_id,
-                    func.strftime("%Y", AttendanceNote.note_date) == str(year),
-                    func.strftime("%m", AttendanceNote.note_date) == f"{month:02d}",
+                    extract("year", AttendanceNote.note_date) == year,
+                    extract("month", AttendanceNote.note_date) == month,
                 )
                 .order_by(AttendanceNote.note_date.asc())
                 .all()
@@ -961,6 +969,11 @@ def logs():
 
 
 if __name__ == "__main__":
+    os.makedirs(os.path.join(base_dir, "data"), exist_ok=True)
     with app.app_context():
         db.create_all()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "5000"))
+    debug_mode = os.getenv("FLASK_DEBUG", "1") == "1"
+    app.run(host=host, port=port, debug=debug_mode)

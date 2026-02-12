@@ -1,6 +1,9 @@
-# 企业人员考勤统计网站（本地部署版）
+# 企业人员考勤统计网站
 
-这是一个面向公司内部使用的**多管理员、多团队、共享员工**考勤与工资统计系统。你可以把它先部署在自己的电脑上，当作服务器使用，手机和电脑都能访问。
+这是一个面向公司内部使用的 **多管理员、多团队、共享员工** 考勤与工资统计系统。
+
+- 默认数据库：SQLite（适合你当前 <10 管理员的场景）
+- 同时支持：本地调试 + 云服务器部署（阿里云 ECS）
 
 ---
 
@@ -9,177 +12,188 @@
 - 公司维度注册/登录（一个公司一个账号空间）
 - 公司创建者（老板）自动具备管理员权限，并可继续创建管理员
 - 管理员可创建多个团队
-- 团队页面支持搜索，并可进入团队详情维护员工（可新增员工或添加原有员工）
-- 员工信息管理：姓名、单日工资（员工姓名公司内唯一；若新增时勾选临时用工，则自动命名为“姓名-临-团队名”）；员工总览支持进入个人考勤明细
+- 团队页面支持搜索，并可进入团队详情维护员工（新增或添加已有员工）
 - 员工可分配到多个团队（跨团队共享）
-- 团队考勤：按团队展示全部员工，使用单选按钮记录 0 / 0.5 / 1 天
-  - 不允许记录未来日期
-  - 同一个员工在同一天跨团队考勤总和不能超过 1 天
-- 借支记录（不允许未来日期）
-- 工资统计支持“单月”或“全部月份”视图，并可导出（按年月列展示天数，附总天数/总借支/总工资/剩余工资）；同时展示并导出考勤备注信息
-- 公司创建者可查看全量操作日志（谁在什么时候做了什么）
-- 公司创建者可导出 Excel 工资统计表
+- 团队考勤：0 / 0.5 / 1 天，禁止未来日期
+- 同员工同一天跨团队总考勤不能超过 1 天
+- 借支记录（禁止未来日期）
+- 工资统计支持“单月/全部月份”并可导出 Excel
+- 公司创建者可查看操作日志
 
 ---
 
 ## 2. 技术栈
 
 - Python 3.10+
-- Flask（后端 + 页面渲染）
-- SQLite（本地数据库）
-- Bootstrap 5（响应式 UI，兼容手机与电脑）
-- Pandas + OpenPyXL（Excel 导出）
+- Flask + Flask-SQLAlchemy + Flask-Login
+- SQLite
+- Bootstrap 5
+- Pandas + OpenPyXL（导出）
 
 ---
 
-## 3. 本地部署（超详细，新手版）
+## 3. 本地调试（开发环境）
 
-> 以下以 Windows/Mac/Linux 都通用的思路写，命令以终端为例。
-
-### 步骤 1：安装 Python
-
-1. 打开 Python 官网：https://www.python.org/downloads/
-2. 下载并安装 Python 3.10 或更高版本。
-3. 安装时请勾选：`Add Python to PATH`（Windows 特别重要）。
-4. 安装后打开终端，执行：
-   ```bash
-   python --version
-   ```
-   或
-   ```bash
-   python3 --version
-   ```
-   能看到版本号说明安装成功。
-
-### 步骤 2：下载代码并进入目录
-
-如果你已经有这份代码，直接进入项目目录即可。
-
-```bash
-cd 你的项目目录/kaoqingC
-```
-
-### 步骤 3：创建虚拟环境（推荐）
+### 3.1 安装依赖
 
 ```bash
 python -m venv .venv
-```
-
-激活虚拟环境：
-
-- Windows（PowerShell）：
-  ```bash
-  .venv\Scripts\Activate.ps1
-  ```
-- Windows（cmd）：
-  ```bash
-  .venv\Scripts\activate.bat
-  ```
-- Mac/Linux：
-  ```bash
-  source .venv/bin/activate
-  ```
-
-激活后通常会看到命令行前面出现 `(.venv)`。
-
-### 步骤 4：安装依赖
-
-```bash
+source .venv/bin/activate   # Windows 用 .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 步骤 5：启动项目
+### 3.2 启动
 
 ```bash
 python app.py
 ```
 
-如果启动成功，你会看到类似：
+默认访问：
 
-```text
-Running on http://127.0.0.1:5000
-Running on http://0.0.0.0:5000
+- http://127.0.0.1:5000
+
+### 3.3 常用环境变量
+
+- `SECRET_KEY`：会话密钥
+- `DATABASE_URL`：数据库连接（默认 SQLite）
+- `HOST`：默认 `0.0.0.0`
+- `PORT`：默认 `5000`
+- `FLASK_DEBUG`：`1` 开调试，`0` 关调试
+
+> 默认数据库文件在：`data/attendance.db`。
+
+---
+
+## 4. 云服务器部署（阿里云 ECS，生产环境）
+
+> 推荐系统：Ubuntu 22.04
+
+### 4.1 服务器准备
+
+1. ECS 安全组放行：22、80、443
+2. 连接服务器：
+
+```bash
+ssh root@你的服务器IP
 ```
 
-### 步骤 6：电脑访问
+### 4.2 安装系统依赖
 
-浏览器打开：
-
-- 本机访问：`http://127.0.0.1:5000`
-
-### 步骤 7：手机访问（同一局域网）
-
-1. 确保手机和电脑连接同一个 Wi-Fi。
-2. 在电脑终端查看本机局域网 IP（例如 `192.168.1.20`）。
-3. 手机浏览器访问：
-   ```
-   http://192.168.1.20:5000
-   ```
-4. 若打不开，请检查电脑防火墙是否放行 5000 端口。
-
----
-
-## 4. 第一次使用流程建议
-
-1. 进入首页，点击“公司注册”。
-2. 注册公司 + 创建者账号。
-3. 登录后，先去“管理员”页面创建其他管理员。
-4. 去“团队”页面创建团队并指定负责人。
-5. 去“团队管理”中点击“员工维护”，可直接在团队内新增/修改/删除员工。
-6. 在“团队管理”中点击“团队考勤”，按团队批量录入员工考勤（单选按钮 0/0.5/1）。
-7. 有借支就去“借支”页面录入。
-8. 在“工资统计”查看月度结果。
-9. 公司创建者可下载 Excel 并查看“操作日志”。
-
----
-
-## 5. 关键业务规则（系统内已实现）
-
-- 未来日期不可录入（考勤、借支都不行）
-- 同员工同一天总考勤不能超过 1 天（跨团队自动校验）
-- 员工可同时属于多个团队，数据共享
-- 公司创建者可审计所有管理员操作
-
----
-
-## 6. 项目结构
-
-```text
-kaoqingC/
-├── app.py                # 主程序（路由、模型、业务逻辑）
-├── requirements.txt      # 依赖列表
-├── templates/            # 页面模板
-└── static/css/style.css  # 自定义样式
+```bash
+apt update
+apt install -y python3 python3-venv python3-pip nginx
 ```
 
+### 4.3 部署项目
+
+```bash
+mkdir -p /opt/kaoqingC
+cd /opt/kaoqingC
+# 上传代码到这里（git clone / scp 均可）
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
+mkdir -p data
+```
+
+### 4.4 配置生产环境变量
+
+```bash
+cat > /opt/kaoqingC/.env << 'EOF_ENV'
+SECRET_KEY=请改成随机长字符串
+DATABASE_URL=sqlite:////opt/kaoqingC/data/attendance.db
+HOST=127.0.0.1
+PORT=5000
+FLASK_DEBUG=0
+EOF_ENV
+```
+
+### 4.5 首次初始化
+
+```bash
+cd /opt/kaoqingC
+source .venv/bin/activate
+export $(grep -v '^#' .env | xargs)
+python app.py
+# 首次创建数据库后 Ctrl+C
+```
+
+### 4.6 使用 systemd + Gunicorn 托管
+
+```bash
+cat > /etc/systemd/system/kaoqing.service << 'EOF_SVC'
+[Unit]
+Description=Kaoqing Flask App
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/kaoqingC
+EnvironmentFile=/opt/kaoqingC/.env
+ExecStart=/opt/kaoqingC/.venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 app:app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF_SVC
+
+chown -R www-data:www-data /opt/kaoqingC
+systemctl daemon-reload
+systemctl enable kaoqing
+systemctl restart kaoqing
+systemctl status kaoqing
+```
+
+### 4.7 Nginx 反向代理
+
+```bash
+cat > /etc/nginx/sites-available/kaoqing << 'EOF_NGX'
+server {
+    listen 80;
+    server_name 你的域名或服务器IP;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF_NGX
+
+ln -sf /etc/nginx/sites-available/kaoqing /etc/nginx/sites-enabled/kaoqing
+nginx -t
+systemctl restart nginx
+```
+
+### 4.8 HTTPS（可选）
+
+```bash
+apt install -y certbot python3-certbot-nginx
+certbot --nginx -d 你的域名
+```
+
+### 4.9 SQLite 备份建议
+
+```bash
+mkdir -p /opt/kaoqingC/backup
+cp /opt/kaoqingC/data/attendance.db /opt/kaoqingC/backup/attendance_$(date +%F).db
+```
+
+可用 crontab 做每日备份。
+
 ---
 
-## 7. 后续可升级建议
+## 5. 常见问题
 
-- 接入短信验证码登录
-- 增加角色细分（只读管理员/财务管理员）
-- 增加图表分析（团队月趋势、员工出勤率）
-- 上云部署（阿里云、腾讯云、Railway、Render）
-- 增加数据备份与恢复
+### Q1：为什么用 SQLite？
+你当前管理员规模小（<10），SQLite 更轻量，运维成本低。
 
----
+### Q2：本地和线上可以共用一套代码吗？
+可以，本项目通过环境变量切换调试/生产参数。
 
-## 8. 常见问题
-
-### Q1：重启后数据会丢吗？
-不会。SQLite 数据库会保存在项目目录下的 `attendance.db` 文件中。
-
-### Q2：我想换端口怎么办？
-在 `app.py` 最底部把 `port=5000` 改成你想要的端口，比如 8000。
-
-### Q3：生产环境能直接用吗？
-本项目当前是本地部署演示版，生产建议：
-- 使用 Gunicorn/uWSGI
-- 使用 Nginx 反向代理
-- 切换 MySQL/PostgreSQL
-- 配置 HTTPS 和更强密码策略
-
----
-
-如果你愿意，我下一步可以继续帮你做：
-1）员工头像上传；2）批量导入员工；3）按团队独立导出 Excel；4）一键 Docker 部署。
+### Q3：如果后续并发增大怎么办？
+可再切换到 PostgreSQL（需要额外迁移方案）。
