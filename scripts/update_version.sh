@@ -2,6 +2,14 @@
 set -euo pipefail
 
 # 一键更新脚本：备份数据库 -> 拉代码 -> 安装依赖 -> 语法检查 -> 重启服务 -> 健康检查
+# 用法：
+#   ./scripts/update_version.sh [branch] [repo_url]
+# 例子：
+#   ./scripts/update_version.sh work
+#   ./scripts/update_version.sh main https://github.com/Qianyonggang/kaoqingC.git
+# 备份模式：
+#   BACKUP_MODE=rotate（默认，按时间戳保留历史）
+#   BACKUP_MODE=overwrite（每天覆盖同一个文件 attendance_latest.db）
 APP_DIR="/opt/kaoqingC"
 VENV_PY="$APP_DIR/.venv/bin/python"
 VENV_PIP="$APP_DIR/.venv/bin/pip"
@@ -10,6 +18,8 @@ DB_FILE="$APP_DIR/data/attendance.db"
 BACKUP_DIR="$APP_DIR/backup"
 DEFAULT_BRANCH="work"
 BRANCH="${1:-$DEFAULT_BRANCH}"
+REPO_URL="${2:-${REPO_URL:-}}"
+BACKUP_MODE="${BACKUP_MODE:-rotate}"
 
 log() {
   echo "[$(date '+%F %T')] $*"
@@ -20,6 +30,51 @@ need_cmd() {
     echo "错误：缺少命令 $1" >&2
     exit 1
   }
+}
+
+ensure_repo_ready() {
+  need_cmd git
+
+  if [[ -d .git ]]; then
+    if [[ -n "$REPO_URL" ]]; then
+      log "检测到你指定了仓库地址，更新 origin -> $REPO_URL"
+      git remote set-url origin "$REPO_URL"
+    fi
+    return
+  fi
+
+  [[ -n "$REPO_URL" ]] || {
+    echo "错误：当前目录不是 Git 仓库，且未提供 repo_url。" >&2
+    echo "请执行：./scripts/update_version.sh <branch> <repo_url>" >&2
+    exit 1
+  }
+
+  log "当前目录不是 Git 仓库，使用 repo_url 初始化：$REPO_URL"
+  git init
+  git remote add origin "$REPO_URL"
+}
+
+backup_db() {
+  mkdir -p "$BACKUP_DIR"
+  if [[ ! -f "$DB_FILE" ]]; then
+    log "未找到数据库文件（首次部署可忽略）：$DB_FILE"
+    return
+  fi
+
+  case "$BACKUP_MODE" in
+    rotate)
+      cp "$DB_FILE" "$BACKUP_DIR/attendance_$(date +%F_%H-%M-%S).db"
+      log "数据库备份完成（历史保留）：$BACKUP_DIR"
+      ;;
+    overwrite)
+      cp "$DB_FILE" "$BACKUP_DIR/attendance_latest.db"
+      log "数据库备份完成（覆盖模式）：$BACKUP_DIR/attendance_latest.db"
+      ;;
+    *)
+      echo "错误：BACKUP_MODE 只支持 rotate 或 overwrite，当前是：$BACKUP_MODE" >&2
+      exit 1
+      ;;
+  esac
 }
 
 main() {
@@ -40,24 +95,14 @@ main() {
   }
 
   log "1/7 备份数据库"
-  mkdir -p "$BACKUP_DIR"
-  if [[ -f "$DB_FILE" ]]; then
-    cp "$DB_FILE" "$BACKUP_DIR/attendance_$(date +%F_%H-%M-%S).db"
-    log "已备份到：$BACKUP_DIR"
-  else
-    log "未找到数据库文件（首次部署可忽略）：$DB_FILE"
-  fi
+  backup_db
 
   log "2/7 更新代码"
-  if [[ -d .git ]]; then
-    need_cmd git
-    git fetch --all --prune
-    git checkout "$BRANCH"
-    git pull --ff-only
-    log "代码更新完成，当前分支：$(git branch --show-current)"
-  else
-    log "当前目录不是 Git 仓库，跳过拉取（请先手动上传新代码）。"
-  fi
+  ensure_repo_ready
+  git fetch --all --prune
+  git checkout "$BRANCH"
+  git pull --ff-only origin "$BRANCH"
+  log "代码更新完成，当前分支：$(git branch --show-current)"
 
   log "3/7 安装依赖"
   "$VENV_PIP" install -r requirements.txt

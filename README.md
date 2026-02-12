@@ -265,3 +265,30 @@ namei -om /opt/kaoqingC/.venv/bin/python
 
 ### Q3：如果后续并发增大怎么办？
 可再切换到 PostgreSQL（需要额外迁移方案）。
+
+
+### Q4：`scripts/update_version.sh` 怎么知道从哪个 GitHub 仓库拉代码？
+
+- 如果 `/opt/kaoqingC` 本身就是用 `git clone` 部署的，脚本会直接使用当前仓库的 `origin`，无需你每次手动输入。
+- 你也可以在执行时显式指定仓库地址（第二个参数）：
+
+```bash
+./scripts/update_version.sh work https://github.com/Qianyonggang/kaoqingC.git
+```
+
+- 私有仓库推荐两种方式：
+  1) SSH Key（推荐）：把服务器公钥加到 GitHub，再用 `git@github.com:Qianyonggang/kaoqingC.git`。
+  2) HTTPS + Token：使用 PAT（不要用账号密码）。
+
+### Q5：自动备份保存在哪里？能每天覆盖吗？
+
+- 备份目录默认是：`/opt/kaoqingC/backup`。
+- 默认模式是 `rotate`，每次生成一个带时间戳的新文件（便于回滚）。
+- 如果你希望每天覆盖同一个文件，执行更新脚本时加：
+
+```bash
+BACKUP_MODE=overwrite ./scripts/update_version.sh
+```
+
+覆盖模式会写入：`/opt/kaoqingC/backup/attendance_latest.db`。
+
