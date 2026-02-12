@@ -14,12 +14,17 @@ APP_DIR="/opt/kaoqingC"
 VENV_PY="$APP_DIR/.venv/bin/python"
 VENV_PIP="$APP_DIR/.venv/bin/pip"
 SERVICE_NAME="kaoqing"
+ENV_FILE="$APP_DIR/.env"
 DB_FILE="$APP_DIR/data/attendance.db"
 BACKUP_DIR="$APP_DIR/backup"
 DEFAULT_BRANCH="work"
 BRANCH="${1:-$DEFAULT_BRANCH}"
 REPO_URL="${2:-${REPO_URL:-}}"
 BACKUP_MODE="${BACKUP_MODE:-rotate}"
+HEALTH_RETRIES="${HEALTH_RETRIES:-8}"
+HEALTH_WAIT_SEC="${HEALTH_WAIT_SEC:-2}"
+APP_HOST="127.0.0.1"
+APP_PORT="5000"
 
 log() {
   echo "[$(date '+%F %T')] $*"
@@ -77,6 +82,41 @@ backup_db() {
   esac
 }
 
+load_runtime_config() {
+  if [[ -f "$ENV_FILE" ]]; then
+    local env_port
+    env_port="$(sed -n 's/^PORT=//p' "$ENV_FILE" | tail -n 1 | tr -d '[:space:]')"
+    if [[ -n "$env_port" ]]; then
+      APP_PORT="$env_port"
+    fi
+  fi
+}
+
+health_check_with_retry() {
+  local i
+  local app_ok=0
+
+  for ((i = 1; i <= HEALTH_RETRIES; i++)); do
+    if curl -fsS -I --max-time 8 "http://${APP_HOST}:${APP_PORT}" >/dev/null; then
+      app_ok=1
+      break
+    fi
+    log "应用健康检查第 ${i}/${HEALTH_RETRIES} 次失败，${HEALTH_WAIT_SEC}s 后重试..."
+    sleep "$HEALTH_WAIT_SEC"
+  done
+
+  if [[ "$app_ok" -ne 1 ]]; then
+    echo "错误：应用健康检查失败，无法连接 http://${APP_HOST}:${APP_PORT}" >&2
+    echo "请检查：1) .env 中 PORT 是否与 systemd 启动参数一致；2) 服务是否启动成功。" >&2
+    systemctl --no-pager -l status "$SERVICE_NAME" || true
+    journalctl -u "$SERVICE_NAME" -n 120 --no-pager || true
+    exit 1
+  fi
+
+  curl -I --max-time 8 "http://${APP_HOST}:${APP_PORT}"
+  curl -I --max-time 8 http://127.0.0.1
+}
+
 main() {
   need_cmd systemctl
   need_cmd curl
@@ -87,6 +127,7 @@ main() {
   }
 
   cd "$APP_DIR"
+  load_runtime_config
 
   [[ -x "$VENV_PY" ]] || {
     echo "错误：虚拟环境 Python 不可执行：$VENV_PY" >&2
@@ -118,8 +159,7 @@ main() {
   journalctl -u "$SERVICE_NAME" -n 60 --no-pager
 
   log "7/7 健康检查"
-  curl -I --max-time 8 http://127.0.0.1:5000
-  curl -I --max-time 8 http://127.0.0.1
+  health_check_with_retry
 
   log "更新完成。"
 }
