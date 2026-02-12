@@ -1,9 +1,10 @@
 import os
 from datetime import date, datetime
 from io import BytesIO
+from functools import wraps
 
 import pandas as pd
-from flask import Flask, flash, redirect, render_template, request, send_file, url_for
+from flask import Flask, flash, redirect, render_template, request, send_file, session, url_for
 from flask_login import (
     LoginManager,
     UserMixin,
@@ -21,6 +22,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 # =====================
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "attendance-dev-secret")
+app.config["WEBMASTER_USERNAME"] = os.getenv("WEBMASTER_USERNAME", "ygqian")
+app.config["WEBMASTER_PASSWORD"] = os.getenv("WEBMASTER_PASSWORD", "ygqian")
 
 # 默认使用 SQLite（支持通过 DATABASE_URL 覆盖），并统一放在 data 目录
 base_dir = os.path.abspath(os.path.dirname(__file__))
@@ -213,6 +216,64 @@ def calculate_month_stat(employee_id: int, year: int, month: int):
     return round(att_q, 2), round(advances, 2), gross, remaining
 
 
+def site_admin_required(view_func):
+    """网站管理员权限校验。"""
+
+    @wraps(view_func)
+    def _wrapped(*args, **kwargs):
+        if not session.get("is_site_admin"):
+            flash("请先登录网站管理员账号。", "danger")
+            return redirect(url_for("site_admin_login"))
+        return view_func(*args, **kwargs)
+
+    return _wrapped
+
+
+def purge_employees(employee_ids: list[int]):
+    """彻底删除员工及其相关记录。"""
+    if not employee_ids:
+        return
+    Attendance.query.filter(Attendance.employee_id.in_(employee_ids)).delete(synchronize_session=False)
+    Advance.query.filter(Advance.employee_id.in_(employee_ids)).delete(synchronize_session=False)
+    db.session.execute(team_members.delete().where(team_members.c.employee_id.in_(employee_ids)))
+    Employee.query.filter(Employee.id.in_(employee_ids)).delete(synchronize_session=False)
+
+
+def purge_company(company_id: int):
+    """删除公司及其下全部关联信息。"""
+    team_ids = [item.id for item in Team.query.filter_by(company_id=company_id).all()]
+    employee_ids = [item.id for item in Employee.query.filter_by(company_id=company_id).all()]
+
+    if team_ids:
+        AttendanceNote.query.filter(AttendanceNote.team_id.in_(team_ids)).delete(synchronize_session=False)
+    if employee_ids:
+        purge_employees(employee_ids)
+
+    AuditLog.query.filter_by(company_id=company_id).delete(synchronize_session=False)
+    Attendance.query.filter_by(company_id=company_id).delete(synchronize_session=False)
+    Advance.query.filter_by(company_id=company_id).delete(synchronize_session=False)
+    Team.query.filter_by(company_id=company_id).delete(synchronize_session=False)
+    User.query.filter_by(company_id=company_id).delete(synchronize_session=False)
+    Company.query.filter_by(id=company_id).delete(synchronize_session=False)
+
+
+def purge_user_data(user: User):
+    """删除指定账号及其数据。创建者账号会删除整个公司。"""
+    if user.is_owner:
+        purge_company(user.company_id)
+        return
+
+    employee_ids = [item.id for item in Employee.query.filter_by(created_by=user.id).all()]
+    if employee_ids:
+        purge_employees(employee_ids)
+
+    Attendance.query.filter_by(created_by=user.id).delete(synchronize_session=False)
+    AttendanceNote.query.filter_by(created_by=user.id).delete(synchronize_session=False)
+    Advance.query.filter_by(created_by=user.id).delete(synchronize_session=False)
+    AuditLog.query.filter_by(operator_id=user.id).delete(synchronize_session=False)
+    db.session.delete(user)
+
+
 # =====================
 # 登录注册
 # =====================
@@ -273,6 +334,74 @@ def login():
     return render_template("login.html")
 
 
+
+
+@app.route("/site-admin/login", methods=["GET", "POST"])
+def site_admin_login():
+    if request.method == "POST":
+        username = request.form["username"].strip()
+        password = request.form["password"].strip()
+        if username == app.config["WEBMASTER_USERNAME"] and password == app.config["WEBMASTER_PASSWORD"]:
+            session["is_site_admin"] = True
+            flash("网站管理员登录成功。", "success")
+            return redirect(url_for("site_admin_users"))
+        flash("网站管理员账号或密码错误。", "danger")
+        return redirect(url_for("site_admin_login"))
+    return render_template("site_admin_login.html")
+
+
+@app.route("/site-admin/logout")
+def site_admin_logout():
+    session.pop("is_site_admin", None)
+    flash("网站管理员已退出。", "info")
+    return redirect(url_for("site_admin_login"))
+
+
+@app.route("/site-admin/users")
+@site_admin_required
+def site_admin_users():
+    query_text = request.args.get("q", "").strip()
+    users_query = db.session.query(User, Company).join(Company, User.company_id == Company.id)
+    if query_text:
+        users_query = users_query.filter(User.username.like(f"%{query_text}%"))
+    rows = users_query.order_by(Company.created_at.desc(), User.created_at.asc()).all()
+    return render_template("site_admin_users.html", rows=rows, query_text=query_text)
+
+
+@app.route("/site-admin/users/<int:user_id>/update", methods=["POST"])
+@site_admin_required
+def site_admin_user_update(user_id):
+    user = User.query.get_or_404(user_id)
+    username = request.form["username"].strip()
+    password = request.form.get("password", "").strip()
+
+    duplicate = User.query.filter(
+        User.company_id == user.company_id,
+        User.username == username,
+        User.id != user.id,
+    ).first()
+    if duplicate:
+        flash("同公司下用户名已存在。", "danger")
+        return redirect(url_for("site_admin_users"))
+
+    user.username = username
+    if password:
+        user.set_password(password)
+    db.session.commit()
+    flash("账号信息更新成功。", "success")
+    return redirect(url_for("site_admin_users"))
+
+
+@app.route("/site-admin/users/<int:user_id>/delete", methods=["POST"])
+@site_admin_required
+def site_admin_user_delete(user_id):
+    user = User.query.get_or_404(user_id)
+    purge_user_data(user)
+    db.session.commit()
+    flash("账号及关联数据已删除。", "success")
+    return redirect(url_for("site_admin_users"))
+
+
 @app.route("/logout")
 @login_required
 def logout():
@@ -319,8 +448,43 @@ def admins():
         flash("管理员创建成功。", "success")
         return redirect(url_for("admins"))
 
-    data = User.query.filter_by(company_id=current_user.company_id, is_admin=True).all()
+    data = User.query.filter_by(company_id=current_user.company_id, is_admin=True).order_by(User.created_at.asc()).all()
     return render_template("admins.html", admins=data)
+
+
+@app.route("/admins/<int:user_id>/delete", methods=["POST"])
+@login_required
+def admin_delete(user_id):
+    if not current_user.is_owner:
+        flash("只有公司创建者可以删除管理员。", "danger")
+        return redirect(url_for("dashboard"))
+
+    target = User.query.get_or_404(user_id)
+    if target.company_id != current_user.company_id or not target.is_admin:
+        flash("无权删除该账号。", "danger")
+        return redirect(url_for("admins"))
+
+    if target.is_owner:
+        flash("不能删除公司创建者账号。", "warning")
+        return redirect(url_for("admins"))
+
+    # 删除该管理员创建的关联数据后再删除账号
+    employee_ids = [item.id for item in Employee.query.filter_by(company_id=current_user.company_id, created_by=target.id).all()]
+    if employee_ids:
+        purge_employees(employee_ids)
+
+    Attendance.query.filter_by(company_id=current_user.company_id, created_by=target.id).delete(synchronize_session=False)
+    AttendanceNote.query.filter_by(company_id=current_user.company_id, created_by=target.id).delete(synchronize_session=False)
+    Advance.query.filter_by(company_id=current_user.company_id, created_by=target.id).delete(synchronize_session=False)
+
+    Team.query.filter_by(company_id=current_user.company_id, manager_id=target.id).update({"manager_id": current_user.id}, synchronize_session=False)
+    AuditLog.query.filter_by(company_id=current_user.company_id, operator_id=target.id).delete(synchronize_session=False)
+
+    db.session.delete(target)
+    log_action("delete_admin", f"删除管理员：{target.username}")
+    db.session.commit()
+    flash("管理员及其关联数据已删除。", "success")
+    return redirect(url_for("admins"))
 
 
 @app.route("/teams", methods=["GET", "POST"])
@@ -632,7 +796,7 @@ def team_attendance(team_id):
     )
 
 
-@app.route("/employees")
+@app.route("/employees", methods=["GET", "POST"])
 @login_required
 def employees():
     """全局员工查询页（保留快速搜索能力）。"""
@@ -640,12 +804,45 @@ def employees():
         flash("仅管理员可操作。", "danger")
         return redirect(url_for("dashboard"))
 
+    if request.method == "POST":
+        team_ids = [int(item) for item in request.form.getlist("team_ids") if item.isdigit()]
+        employee_ids = [int(item) for item in request.form.getlist("employee_ids") if item.isdigit()]
+
+        selected_employee_ids = set(employee_ids)
+        if team_ids:
+            team_employees = (
+                db.session.query(team_members.c.employee_id)
+                .join(Team, Team.id == team_members.c.team_id)
+                .filter(
+                    Team.company_id == current_user.company_id,
+                    team_members.c.team_id.in_(team_ids),
+                )
+                .all()
+            )
+            selected_employee_ids.update(item.employee_id for item in team_employees)
+
+        if not selected_employee_ids:
+            flash("请至少选择一个团队或员工。", "warning")
+            return redirect(url_for("employees"))
+
+        deleted_count = (
+            Attendance.query.filter(
+                Attendance.company_id == current_user.company_id,
+                Attendance.employee_id.in_(selected_employee_ids),
+            ).delete(synchronize_session=False)
+        )
+        log_action("clear_attendance", f"清空考勤：员工数 {len(selected_employee_ids)}，删除记录 {deleted_count} 条")
+        db.session.commit()
+        flash(f"已清空 {len(selected_employee_ids)} 名员工的考勤，共删除 {deleted_count} 条记录。", "success")
+        return redirect(url_for("employees"))
+
     query_text = request.args.get("q", "").strip()
     items_query = Employee.query.filter_by(company_id=current_user.company_id)
     if query_text:
         items_query = items_query.filter(Employee.name.like(f"%{query_text}%"))
     items = items_query.order_by(Employee.created_at.desc()).all()
-    return render_template("employees.html", items=items, query_text=query_text)
+    teams_data = Team.query.filter_by(company_id=current_user.company_id).order_by(Team.name.asc()).all()
+    return render_template("employees.html", items=items, teams=teams_data, query_text=query_text)
 
 
 @app.route("/employee/<int:employee_id>/detail")

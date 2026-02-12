@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}网站管理员登录{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-5">
+    <div class="card shadow-sm border-0 p-4">
+      <h4 class="mb-3">网站管理员入口</h4>
+      <form method="post">
+        <div class="mb-3">
+          <label class="form-label">登录名</label>
+          <input class="form-control" name="username" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">密码</label>
+          <input class="form-control" type="password" name="password" required>
+        </div>
+        <button class="btn btn-dark w-100">登录网站管理员</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
