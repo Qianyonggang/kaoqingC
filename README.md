@@ -66,63 +66,81 @@ python app.py
 
 ## 4. 云服务器部署（阿里云 ECS，生产环境）
 
-> 推荐系统：Ubuntu 22.04
+> 推荐系统：Ubuntu 22.04。
+>
+> 下方命令是“从零开始可直接复制执行”的完整流程，已包含你之前遇到的两个高频坑：
+> 1）`kaoqing.service` 启动报 `203/EXEC Permission denied`；
+> 2）Nginx `server_name` 分号遗漏导致配置失败。
 
-### 4.1 服务器准备
+### 4.1 前置检查（控制台）
 
-1. ECS 安全组放行：22、80、443
-2. 连接服务器：
+1. 阿里云安全组放行端口：`22`、`80`、`443`。
+2. 域名解析（如 `mrkaoqing.top`）添加 A 记录：
+   - `@` -> 服务器公网 IP
+   - `www` -> 服务器公网 IP
+3. 登录服务器：
 
 ```bash
-ssh root@你的服务器IP
+ssh root@你的公网IP
 ```
 
 ### 4.2 安装系统依赖
 
 ```bash
 apt update
-apt install -y python3 python3-venv python3-pip nginx
+apt install -y python3 python3-venv python3-pip nginx certbot python3-certbot-nginx
 ```
 
-### 4.3 部署项目
+### 4.3 上传代码并创建目录
 
 ```bash
 mkdir -p /opt/kaoqingC
 cd /opt/kaoqingC
-# 上传代码到这里（git clone / scp 均可）
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -r requirements.txt
-mkdir -p data
+# 方式A：git clone 代码到当前目录
+# 方式B：用 WinSCP/Xftp 上传代码到当前目录
+mkdir -p /opt/kaoqingC/data
 ```
 
-### 4.4 配置生产环境变量
+### 4.4 关键步骤：创建虚拟环境（避免 203/EXEC）
+
+> 如果你服务器登录后提示 `(base)`，说明 conda 正在生效。
+> 请先退出 conda，再用系统 Python 创建 venv，并使用 `--copies`。
 
 ```bash
-cat > /opt/kaoqingC/.env << 'EOF_ENV'
-SECRET_KEY=请改成随机长字符串
+conda deactivate 2>/dev/null || true
+cd /opt/kaoqingC
+/usr/bin/python3 -m venv --copies .venv
+/opt/kaoqingC/.venv/bin/pip install -U pip
+/opt/kaoqingC/.venv/bin/pip install -r requirements.txt
+```
+
+### 4.5 创建生产环境变量
+
+```bash
+cat > /opt/kaoqingC/.env << 'EOF'
+SECRET_KEY=请替换为随机长字符串
 DATABASE_URL=sqlite:////opt/kaoqingC/data/attendance.db
 HOST=127.0.0.1
 PORT=5000
 FLASK_DEBUG=0
-EOF_ENV
+EOF
 ```
 
-### 4.5 首次初始化
+### 4.6 首次初始化数据库
 
 ```bash
 cd /opt/kaoqingC
-source .venv/bin/activate
-export $(grep -v '^#' .env | xargs)
-python app.py
-# 首次创建数据库后 Ctrl+C
+set -a
+source /opt/kaoqingC/.env
+set +a
+/opt/kaoqingC/.venv/bin/python app.py
+# 首次运行会创建数据库，看到启动后 Ctrl+C 停止
 ```
 
-### 4.6 使用 systemd + Gunicorn 托管
+### 4.7 配置 systemd 托管（开机自启）
 
 ```bash
-cat > /etc/systemd/system/kaoqing.service << 'EOF_SVC'
+cat > /etc/systemd/system/kaoqing.service << 'EOF'
 [Unit]
 Description=Kaoqing Flask App
 After=network.target
@@ -132,27 +150,32 @@ User=www-data
 Group=www-data
 WorkingDirectory=/opt/kaoqingC
 EnvironmentFile=/opt/kaoqingC/.env
-ExecStart=/opt/kaoqingC/.venv/bin/gunicorn -w 2 -b 127.0.0.1:5000 app:app
+ExecStart=/opt/kaoqingC/.venv/bin/python -m gunicorn -w 2 -b 127.0.0.1:5000 app:app
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
-EOF_SVC
+EOF
 
+# 权限修复（必须执行）
 chown -R www-data:www-data /opt/kaoqingC
+chmod 755 /opt /opt/kaoqingC /opt/kaoqingC/.venv /opt/kaoqingC/.venv/bin
+chmod 755 /opt/kaoqingC/.venv/bin/python /opt/kaoqingC/.venv/bin/gunicorn
+
 systemctl daemon-reload
+systemctl reset-failed kaoqing
 systemctl enable kaoqing
 systemctl restart kaoqing
-systemctl status kaoqing
+systemctl status kaoqing --no-pager -l
 ```
 
-### 4.7 Nginx 反向代理
+### 4.8 配置 Nginx 反向代理
 
 ```bash
-cat > /etc/nginx/sites-available/kaoqing << 'EOF_NGX'
+cat > /etc/nginx/sites-available/kaoqing << 'EOF'
 server {
     listen 80;
-    server_name 你的域名或服务器IP;
+    server_name 你的域名 www.你的域名;
 
     location / {
         proxy_pass http://127.0.0.1:5000;
@@ -162,30 +185,75 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
-EOF_NGX
+EOF
 
+rm -f /etc/nginx/sites-enabled/default
 ln -sf /etc/nginx/sites-available/kaoqing /etc/nginx/sites-enabled/kaoqing
 nginx -t
+systemctl enable nginx
 systemctl restart nginx
+systemctl status nginx --no-pager -l
 ```
 
-### 4.8 HTTPS（可选）
+### 4.9 联通性验证（逐层排查）
 
 ```bash
-apt install -y certbot python3-certbot-nginx
-certbot --nginx -d 你的域名
+# 1) Gunicorn
+curl -I http://127.0.0.1:5000
+
+# 2) Nginx 本机入口
+curl -I http://127.0.0.1
+
+# 3) 强制 Host 命中你的站点
+curl -I -H "Host: 你的域名" http://127.0.0.1
+
+# 4) DNS 是否生效
+dig +short 你的域名
 ```
 
-### 4.9 SQLite 备份建议
+- 第1步通，说明后端正常。
+- 第2/3步通，说明 Nginx 反代正常。
+- 第4步无返回，说明是 DNS 未生效，不是程序问题。
+
+### 4.10 申请 HTTPS 证书
 
 ```bash
-mkdir -p /opt/kaoqingC/backup
-cp /opt/kaoqingC/data/attendance.db /opt/kaoqingC/backup/attendance_$(date +%F).db
+certbot --nginx -d 你的域名 -d www.你的域名
 ```
 
-可用 crontab 做每日备份。
+申请成功后访问：`https://你的域名`。
+
+### 4.11 SQLite 自动备份（每日 2 点）
+
+```bash
+cat > /opt/kaoqingC/backup_sqlite.sh << 'EOF'
+#!/bin/bash
+set -e
+BACKUP_DIR=/opt/kaoqingC/backup
+mkdir -p "$BACKUP_DIR"
+cp /opt/kaoqingC/data/attendance.db "$BACKUP_DIR/attendance_$(date +%F_%H-%M-%S).db"
+find "$BACKUP_DIR" -type f -mtime +14 -delete
+EOF
+
+chmod +x /opt/kaoqingC/backup_sqlite.sh
+(crontab -l 2>/dev/null; echo '0 2 * * * /opt/kaoqingC/backup_sqlite.sh') | crontab -
+crontab -l
+```
+
+### 4.12 常见故障快速命令
+
+```bash
+systemctl status kaoqing --no-pager -l
+journalctl -u kaoqing -n 120 --no-pager
+systemctl status nginx --no-pager -l
+nginx -t
+namei -om /opt/kaoqingC/.venv/bin/python
+```
+
+如果看到 `.venv/bin/python -> /root/miniconda3/...`，请删除 `.venv` 后按 4.4 重建。
 
 ---
+
 
 ## 5. 常见问题
 
@@ -197,3 +265,30 @@ cp /opt/kaoqingC/data/attendance.db /opt/kaoqingC/backup/attendance_$(date +%F).
 
 ### Q3：如果后续并发增大怎么办？
 可再切换到 PostgreSQL（需要额外迁移方案）。
+
+
+### Q4：`scripts/update_version.sh` 怎么知道从哪个 GitHub 仓库拉代码？
+
+- 如果 `/opt/kaoqingC` 本身就是用 `git clone` 部署的，脚本会直接使用当前仓库的 `origin`，无需你每次手动输入。
+- 你也可以在执行时显式指定仓库地址（第二个参数）：
+
+```bash
+./scripts/update_version.sh work https://github.com/Qianyonggang/kaoqingC.git
+```
+
+- 私有仓库推荐两种方式：
+  1) SSH Key（推荐）：把服务器公钥加到 GitHub，再用 `git@github.com:Qianyonggang/kaoqingC.git`。
+  2) HTTPS + Token：使用 PAT（不要用账号密码）。
+
+### Q5：自动备份保存在哪里？能每天覆盖吗？
+
+- 备份目录默认是：`/opt/kaoqingC/backup`。
+- 默认模式是 `rotate`，每次生成一个带时间戳的新文件（便于回滚）。
+- 如果你希望每天覆盖同一个文件，执行更新脚本时加：
+
+```bash
+BACKUP_MODE=overwrite ./scripts/update_version.sh
+```
+
+覆盖模式会写入：`/opt/kaoqingC/backup/attendance_latest.db`。
+
