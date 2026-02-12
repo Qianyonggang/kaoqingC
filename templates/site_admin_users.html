@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}网站管理员-用户管理{% endblock %}
+{% block content %}
+<div class="card p-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="mb-0">全站用户管理</h5>
+    <a href="{{ url_for('site_admin_logout') }}" class="btn btn-outline-secondary btn-sm">退出网站管理员</a>
+  </div>
+
+  <form method="get" class="mb-3">
+    <div class="input-group">
+      <input name="q" class="form-control" placeholder="搜索用户名" value="{{ query_text }}">
+      <button class="btn btn-outline-secondary">搜索</button>
+    </div>
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <tr>
+        <th>公司</th>
+        <th>用户名</th>
+        <th>角色</th>
+        <th style="min-width: 280px;">修改账号</th>
+        <th>删除</th>
+      </tr>
+      {% for user, company in rows %}
+      <tr>
+        <td>{{ company.name }}</td>
+        <td>{{ user.username }}</td>
+        <td>
+          {% if user.is_owner %}<span class="badge text-bg-success">创建者</span>{% endif %}
+          {% if user.is_admin and not user.is_owner %}<span class="badge text-bg-primary">管理员</span>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('site_admin_user_update', user_id=user.id) }}" class="d-flex gap-2">
+            <input name="username" class="form-control form-control-sm" value="{{ user.username }}" required>
+            <input name="password" class="form-control form-control-sm" placeholder="新密码(可空)">
+            <button class="btn btn-sm btn-outline-primary">保存</button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('site_admin_user_delete', user_id=user.id) }}" onsubmit="return confirm('确认删除该账号及关联数据吗？');">
+            <button class="btn btn-sm btn-outline-danger">删除账号</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-muted">暂无数据</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -17,7 +17,17 @@
       <h5>管理员列表</h5>
       <ul class="list-group">
         {% for item in admins %}
-          <li class="list-group-item d-flex justify-content-between"><span>{{ item.username }}</span>{% if item.is_owner %}<span class="badge bg-success">创建者</span>{% endif %}</li>
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <span>
+              {{ item.username }}
+              {% if item.is_owner %}<span class="badge bg-success">创建者</span>{% endif %}
+            </span>
+            {% if not item.is_owner %}
+            <form method="post" action="{{ url_for('admin_delete', user_id=item.id) }}" onsubmit="return confirm('确认删除该管理员及其关联数据吗？');">
+              <button class="btn btn-sm btn-outline-danger">删除</button>
+            </form>
+            {% endif %}
+          </li>
         {% endfor %}
       </ul>
     </div>
