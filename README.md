@@ -225,18 +225,12 @@ certbot --nginx -d 你的域名 -d www.你的域名
 
 ### 4.11 SQLite 自动备份（每日 2 点）
 
-```bash
-cat > /opt/kaoqingC/backup_sqlite.sh << 'EOF'
-#!/bin/bash
-set -e
-BACKUP_DIR=/opt/kaoqingC/backup
-mkdir -p "$BACKUP_DIR"
-cp /opt/kaoqingC/data/attendance.db "$BACKUP_DIR/attendance_$(date +%F_%H-%M-%S).db"
-find "$BACKUP_DIR" -type f -mtime +14 -delete
-EOF
+> 仓库已提供脚本：`scripts/backup_sqlite.sh`，默认会备份到 `/opt/kaoqingC/backup`，并保留 14 天。
 
-chmod +x /opt/kaoqingC/backup_sqlite.sh
-(crontab -l 2>/dev/null; echo '0 2 * * * /opt/kaoqingC/backup_sqlite.sh') | crontab -
+```bash
+cd /opt/kaoqingC
+chmod +x /opt/kaoqingC/scripts/backup_sqlite.sh
+(crontab -l 2>/dev/null; echo '0 2 * * * /opt/kaoqingC/scripts/backup_sqlite.sh') | crontab -
 crontab -l
 ```
 
